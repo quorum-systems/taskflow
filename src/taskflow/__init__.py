@@ -1,3 +1,9 @@
 """taskflow-git — git-native task management."""
 
-__version__ = "0.3.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("taskflow-git")
+except PackageNotFoundError:
+    # Fallback for local/dev (not installed yet)
+    __version__ = "0.0.0"
