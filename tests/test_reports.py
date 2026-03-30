@@ -11,16 +11,9 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
 from taskflow.config import TaskflowConfig
-from taskflow.reports import (
-    count_tasks_by_category,
-    ordered_categories,
-    parse_done_by_week,
-    report_pipeline,
-    report_progress,
-)
+from taskflow.reports import count_tasks_by_category, ordered_categories, parse_done_by_week, report_pipeline, report_progress
 
 SAMPLE_NOW = """\
 ### 🔵 Engineering
@@ -100,7 +93,7 @@ class TestOrderedCategories:
         data = {
             "categories": [
                 {"name": "Engineering", "icon": "🔵"},
-                {"name": "Operations",  "icon": "🔴"},
+                {"name": "Operations", "icon": "🔴"},
             ]
         }
         return TaskflowConfig(tmp_path, data)
@@ -134,7 +127,7 @@ class TestReportProgress:
         data = {
             "categories": [
                 {"name": "Engineering", "icon": "🔵"},
-                {"name": "Operations",  "icon": "🔴"},
+                {"name": "Operations", "icon": "🔴"},
             ]
         }
         return TaskflowConfig(tmp_path, data)
@@ -164,18 +157,18 @@ class TestReportPipeline:
         backlog = tmp_path / ".taskflow" / "backlog"
         backlog.mkdir(parents=True)
         for name, text in [
-            ("0-now.md",    SAMPLE_NOW),
-            ("1-blocked.md","### Engineering\n* blocked task\n---\n"),
+            ("0-now.md", SAMPLE_NOW),
+            ("1-blocked.md", "### Engineering\n* blocked task\n---\n"),
             ("2-paused.md", "---\n"),
-            ("3-next.md",   "### Engineering\n* next task\n---\n"),
-            ("4-later.md",  "### Engineering\n* later task\n---\n"),
-            ("done.md",     SAMPLE_DONE),
+            ("3-next.md", "### Engineering\n* next task\n---\n"),
+            ("4-later.md", "### Engineering\n* later task\n---\n"),
+            ("done.md", SAMPLE_DONE),
         ]:
             (backlog / name).write_text(text)
         data = {
             "categories": [
                 {"name": "Engineering", "icon": "🔵"},
-                {"name": "Operations",  "icon": "🔴"},
+                {"name": "Operations", "icon": "🔴"},
             ]
         }
         return TaskflowConfig(tmp_path, data)

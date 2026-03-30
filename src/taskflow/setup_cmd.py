@@ -14,7 +14,6 @@ import subprocess
 from pathlib import Path
 
 import click
-import yaml
 
 from taskflow.config import CONFIG_FILE, TaskflowConfig
 
@@ -100,10 +99,10 @@ settings:
 """
 
 SIMPLE_STATE_TITLES = {
-    "now":     ("Now",     "Tasks actively being executed this week."),
+    "now": ("Now", "Tasks actively being executed this week."),
     "blocked": ("Blocked", "Tasks waiting on something external.\n\nNote what's blocking each one."),
-    "paused":  ("Paused",  "Tasks deliberately on hold.\n\nNot blocked, not forgotten — just not now."),
-    "next":    ("Next",    "Planned work queued for the next execution window."),
+    "paused": ("Paused", "Tasks deliberately on hold.\n\nNot blocked, not forgotten — just not now."),
+    "next": ("Next", "Planned work queued for the next execution window."),
 }
 
 
@@ -124,10 +123,16 @@ def _build_simple_file(title: str, description: str, categories: list[dict]) -> 
 def _build_later_file(categories: list[dict], phases: list[dict]) -> str:
     cat_by_name = {c["name"]: c for c in categories}
     lines = [
-        "# Later", "",
-        "Longer-horizon work organised by phase.", "",
-        "Promote to next when the time is right:", "",
-        "```", 'taskflow promote "task text"', "```", "",
+        "# Later",
+        "",
+        "Longer-horizon work organised by phase.",
+        "",
+        "Promote to next when the time is right:",
+        "",
+        "```",
+        'taskflow promote "task text"',
+        "```",
+        "",
     ]
     for phase in phases:
         lines += ["---", "", f"## {phase['name']}"]
@@ -153,27 +158,31 @@ def install_git_aliases(root: Path) -> None:
     try:
         subprocess.run(
             ["git", "rev-parse", "--git-dir"],
-            cwd=str(root), check=True, capture_output=True,
+            cwd=str(root),
+            check=True,
+            capture_output=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
         return
 
     transitions = [
         ("promote", "promote"),
-        ("start",   "start"),
-        ("block",   "block"),
+        ("start", "start"),
+        ("block", "block"),
         ("unblock", "unblock"),
-        ("pause",   "pause"),
+        ("pause", "pause"),
         ("unpause", "unpause"),
         ("backlog", "backlog"),
-        ("done",    "done"),
+        ("done", "done"),
     ]
 
     try:
         for alias, subcmd in transitions:
             subprocess.run(
                 ["git", "config", f"alias.{alias}", f"!taskflow {subcmd}"],
-                cwd=str(root), check=True, capture_output=True,
+                cwd=str(root),
+                check=True,
+                capture_output=True,
             )
         click.echo("  git aliases installed")
     except subprocess.CalledProcessError as e:
@@ -188,8 +197,8 @@ def run_setup(config: TaskflowConfig, force: bool = False, dry_run: bool = False
     Skips existing files unless force=True. Respects dry_run.
     """
     categories = config.categories
-    phases     = config.phases
-    root       = config.root
+    phases = config.phases
+    root = config.root
 
     click.echo(f"\ntaskflow setup — {config.repo_name}")
     click.echo(f"  {len(categories)} categories, {len(phases)} phases\n")
@@ -209,7 +218,7 @@ def run_setup(config: TaskflowConfig, force: bool = False, dry_run: bool = False
                 path.write_text(content, encoding="utf-8")
             changed.append(str(path.relative_to(root)))
 
-    later_path    = config.state_path("later")
+    later_path = config.state_path("later")
     later_content = _build_later_file(categories, phases)
     if not dry_run:
         later_path.parent.mkdir(parents=True, exist_ok=True)

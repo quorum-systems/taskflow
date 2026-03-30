@@ -9,9 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
 
-from taskflow.config import TaskflowConfig, find_root, load_config
+from taskflow.config import TaskflowConfig, find_root
 
 
 class TestFindRoot:

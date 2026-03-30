@@ -8,7 +8,6 @@ this is just wiring. Each command loads config, does one thing, exits.
 from __future__ import annotations
 
 import subprocess
-import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -20,12 +19,12 @@ from taskflow.archive import archive_old_weeks
 from taskflow.config import WORKFLOW_TRANSITIONS, TaskflowConfig, load_config
 from taskflow.reports import report_pipeline, report_progress
 from taskflow.setup_cmd import STARTER_CONFIG, run_setup
-from taskflow.tasklib import append_done, complete_task, move_task, parse_sections
-
+from taskflow.tasklib import append_done, complete_task, move_task
 
 # ---------------------------------------------------------------------------
 # Shell completion
 # ---------------------------------------------------------------------------
+
 
 def install_completion(shell: str) -> None:
     """
@@ -33,9 +32,11 @@ def install_completion(shell: str) -> None:
     User adds it to their shell profile — we don't write to their system.
     """
     import os
+
     os.environ["_TASKFLOW_COMPLETE"] = f"{shell}_source"
     try:
         from taskflow.cli import main
+
         main(standalone_mode=False)
     except SystemExit:
         pass
@@ -45,11 +46,13 @@ def install_completion(shell: str) -> None:
 # Git helpers
 # ---------------------------------------------------------------------------
 
+
 def git_root_or_none() -> Optional[Path]:
     try:
         root = subprocess.check_output(
             ["git", "rev-parse", "--show-toplevel"],
-            text=True, stderr=subprocess.DEVNULL,
+            text=True,
+            stderr=subprocess.DEVNULL,
         ).strip()
         return Path(root)
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -75,7 +78,7 @@ def _commit_transition(cfg: TaskflowConfig, src: str, dst: str, verb: str, task_
 
 
 def _commit_done(cfg: TaskflowConfig, task_text: str) -> None:
-    now_rel  = str(cfg.state_path("now").relative_to(cfg.root))
+    now_rel = str(cfg.state_path("now").relative_to(cfg.root))
     done_rel = str(cfg.state_path("done").relative_to(cfg.root))
     git_commit([now_rel, done_rel], f"done: {task_text}", cfg.root)
 
@@ -83,6 +86,7 @@ def _commit_done(cfg: TaskflowConfig, task_text: str) -> None:
 # ---------------------------------------------------------------------------
 # Root command group
 # ---------------------------------------------------------------------------
+
 
 @click.group()
 @click.version_option(version=__version__, prog_name="taskflow")
@@ -104,9 +108,9 @@ def main() -> None:
 # init
 # ---------------------------------------------------------------------------
 
+
 @main.command()
-@click.option("--from", "from_url", default=None, metavar="URL",
-              help="Fetch starter config from a URL instead of using the built-in template.")
+@click.option("--from", "from_url", default=None, metavar="URL", help="Fetch starter config from a URL instead of using the built-in template.")
 @click.option("--name", default=None, help="Project name (defaults to current directory name).")
 def init(from_url: Optional[str], name: Optional[str]) -> None:
     """Set up a new taskflow project in the current directory."""
@@ -114,14 +118,13 @@ def init(from_url: Optional[str], name: Optional[str]) -> None:
     config_path = cwd / ".taskflow.yml"
 
     if config_path.exists():
-        raise click.ClickException(
-            ".taskflow.yml already exists. Run `taskflow setup` to regenerate backlog files."
-        )
+        raise click.ClickException(".taskflow.yml already exists. Run `taskflow setup` to regenerate backlog files.")
 
     repo_name = name or cwd.name
 
     if from_url:
         import urllib.request
+
         click.echo(f"  fetching config from {from_url}...")
         try:
             with urllib.request.urlopen(from_url) as resp:
@@ -142,7 +145,9 @@ def init(from_url: Optional[str], name: Optional[str]) -> None:
     try:
         result = subprocess.check_output(
             ["git", "rev-parse", "--show-toplevel"],
-            cwd=str(cwd), text=True, stderr=subprocess.DEVNULL,
+            cwd=str(cwd),
+            text=True,
+            stderr=subprocess.DEVNULL,
         ).strip()
         git_root = Path(result)
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -164,8 +169,9 @@ def init(from_url: Optional[str], name: Optional[str]) -> None:
 # setup
 # ---------------------------------------------------------------------------
 
+
 @main.command()
-@click.option("--force",   is_flag=True, help="Overwrite existing backlog files.")
+@click.option("--force", is_flag=True, help="Overwrite existing backlog files.")
 @click.option("--dry-run", is_flag=True, help="Show what would happen without writing.")
 def setup(force: bool, dry_run: bool) -> None:
     """Regenerate backlog files and install git aliases from .taskflow.yml."""
@@ -177,6 +183,7 @@ def setup(force: bool, dry_run: bool) -> None:
 # config (diagnostic)
 # ---------------------------------------------------------------------------
 
+
 @main.command("config")
 def show_config() -> None:
     """Show resolved configuration — useful when paths aren't where you expect."""
@@ -187,13 +194,13 @@ def show_config() -> None:
     click.echo(f"  done weeks   : {cfg.done_weeks}")
     click.echo(f"  archive path : {cfg.archive_path}")
     click.echo(f"  weekly plans : {cfg.weekly_plan_dir}")
-    click.echo(f"\n  state files:")
+    click.echo("\n  state files:")
     for state in ("now", "blocked", "paused", "next", "later", "done"):
         path = cfg.state_path(state)
         icon = cfg.state_icon(state)
         exists = "✓" if path.exists() else "✗"
         click.echo(f"    {exists} {icon} {state:8}  {path.relative_to(cfg.root)}")
-    click.echo(f"\n  categories:")
+    click.echo("\n  categories:")
     for cat in cfg.categories:
         icon = cat.get("icon", " ")
         click.echo(f"    {icon} {cat['name']}")
@@ -204,15 +211,17 @@ def show_config() -> None:
 # Workflow commands — one for each transition
 # ---------------------------------------------------------------------------
 
+
 def _workflow_command(verb: str, src: str, dst: str):
     """
     Factory that produces a Click command for a task transition.
     All transitions follow the same pattern: find task in src, move to dst, commit.
     """
+
     @click.argument("task", nargs=-1, required=True)
     def cmd(task: tuple) -> None:
         query = " ".join(task)
-        cfg   = load_config()
+        cfg = load_config()
 
         src_path = cfg.state_path(src)
         dst_path = cfg.state_path(dst)
@@ -229,7 +238,7 @@ def _workflow_command(verb: str, src: str, dst: str):
         _commit_transition(cfg, src, dst, verb, matched)
 
     cmd.__name__ = verb
-    cmd.__doc__  = f"Move a task: {src} → {dst}."
+    cmd.__doc__ = f"Move a task: {src} → {dst}."
     return cmd
 
 
@@ -242,12 +251,13 @@ for _verb, (_src, _dst, _prefix) in WORKFLOW_TRANSITIONS.items():
 # done
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 @click.argument("task", nargs=-1, required=True)
 def done(task: tuple) -> None:
     """Complete a task: remove from now, append to done.md, commit."""
     query = " ".join(task)
-    cfg   = load_config()
+    cfg = load_config()
 
     category, matched = complete_task(cfg.state_path("now"), cfg.state_path("done"), query)
     click.echo(f"Done: [{category}] {matched}")
@@ -259,6 +269,7 @@ def done(task: tuple) -> None:
 # ---------------------------------------------------------------------------
 # add
 # ---------------------------------------------------------------------------
+
 
 @main.command()
 @click.argument("state")
@@ -277,8 +288,8 @@ def add(state: str, category: str, task: tuple) -> None:
     """
     from taskflow.tasklib import CATEGORY_RE, DIVIDER_RE, PHASE_RE, collapse_blank_lines
 
-    query     = " ".join(task)
-    cfg       = load_config()
+    query = " ".join(task)
+    cfg = load_config()
 
     # resolve state — fuzzy match the state name too
     valid = list(["now", "blocked", "paused", "next", "later", "done"])
@@ -287,9 +298,7 @@ def add(state: str, category: str, task: tuple) -> None:
         if len(matches) == 1:
             state = matches[0]
         else:
-            raise click.UsageError(
-                f"Unknown state '{state}'. Valid: {', '.join(valid)}"
-            )
+            raise click.UsageError(f"Unknown state '{state}'. Valid: {', '.join(valid)}")
 
     # resolve category
     if state == "done":
@@ -308,12 +317,10 @@ def add(state: str, category: str, task: tuple) -> None:
     cat_name = cfg.fuzzy_category(category)
     if not cat_name:
         cats = cfg.category_names()
-        q    = category.strip().lower()
+        q = category.strip().lower()
         matches = [c for c in cats if q in c.lower()]
         if len(matches) > 1:
-            raise click.UsageError(
-                f"'{category}' matches multiple categories: {', '.join(matches)}"
-            )
+            raise click.UsageError(f"'{category}' matches multiple categories: {', '.join(matches)}")
         raise click.UsageError(f"No category matching '{category}'")
 
     # find the icon for the category heading
@@ -326,7 +333,7 @@ def add(state: str, category: str, task: tuple) -> None:
     lines = target.read_text(encoding="utf-8").splitlines() if target.exists() else []
 
     # find the category section and insert before its divider
-    import re as _re
+
     insert_at = None
     for i, line in enumerate(lines):
         if PHASE_RE.match(line):
@@ -366,9 +373,9 @@ def add(state: str, category: str, task: tuple) -> None:
 # list
 # ---------------------------------------------------------------------------
 
+
 @main.command("list")
-@click.argument("state", default="now",
-                type=click.Choice(["now", "next", "later", "blocked", "paused"]))
+@click.argument("state", default="now", type=click.Choice(["now", "next", "later", "blocked", "paused"]))
 def list_tasks(state: str) -> None:
     """
     List tasks in a state. Defaults to 'now'.
@@ -378,10 +385,10 @@ def list_tasks(state: str) -> None:
     taskflow list next      # tasks queued up
     taskflow list blocked   # what's stuck
     """
-    import re as _re
+
     from taskflow.tasklib import CATEGORY_RE, PHASE_RE, TASK_RE
 
-    cfg  = load_config()
+    cfg = load_config()
     path = cfg.state_path(state)
     icon = cfg.state_icon(state)
 
@@ -389,9 +396,9 @@ def list_tasks(state: str) -> None:
         click.echo(f"\n  {icon} {state}  (empty)\n")
         return
 
-    lines    = path.read_text(encoding="utf-8").splitlines()
-    current  = None
-    printed  = set()  # track which categories we've printed headings for
+    lines = path.read_text(encoding="utf-8").splitlines()
+    current = None
+    printed = set()  # track which categories we've printed headings for
     any_task = False
 
     click.echo(f"\n  {icon} {state}\n")
@@ -408,7 +415,7 @@ def list_tasks(state: str) -> None:
         if t:
             if current and current not in printed and not line.startswith("  "):
                 cat_icon = cfg.category_icon(current)
-                label    = f"{cat_icon} {current}".strip() if cat_icon else current
+                label = f"{cat_icon} {current}".strip() if cat_icon else current
                 click.echo(f"  {label}")
                 printed.add(current)
             indent = "      " if line.startswith("  ") else "    "
@@ -425,10 +432,12 @@ def list_tasks(state: str) -> None:
 # status
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 def status() -> None:
     """Active tasks, blockers, and holds — the morning view."""
     import re as _re
+
     from taskflow.tasklib import CATEGORY_RE, TASK_RE
 
     cfg = load_config()
@@ -451,13 +460,13 @@ def status() -> None:
                 tasks.setdefault(current_cat, []).append(t.group(3))
         return tasks
 
-    now_tasks     = read_tasks("now")
+    now_tasks = read_tasks("now")
     blocked_tasks = read_tasks("blocked")
-    paused_tasks  = read_tasks("paused")
+    paused_tasks = read_tasks("paused")
 
-    total_now     = sum(len(v) for v in now_tasks.values())
+    total_now = sum(len(v) for v in now_tasks.values())
     total_blocked = sum(len(v) for v in blocked_tasks.values())
-    total_paused  = sum(len(v) for v in paused_tasks.values())
+    total_paused = sum(len(v) for v in paused_tasks.values())
 
     def fmt_cat(name: str) -> str:
         icon = cfg.category_icon(name)
@@ -490,12 +499,13 @@ def status() -> None:
 # week
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 def week() -> None:
     """This week's completions from done.md."""
     import re as _re
 
-    cfg       = load_config()
+    cfg = load_config()
     done_path = cfg.state_path("done")
 
     if not done_path.exists():
@@ -503,6 +513,7 @@ def week() -> None:
         return
 
     from taskflow.tasklib import WEEK_HEADING_RE
+
     DONE_RE = _re.compile(r"^\[[\d\s:\-]+\]\s+done:\s+\(([^)]+)\)\s+-\s+(.+)$")
 
     lines = done_path.read_text(encoding="utf-8").splitlines()
@@ -521,7 +532,7 @@ def week() -> None:
         return
 
     entries: dict[str, list[str]] = {}
-    for line in lines[last_week_idx + 1:]:
+    for line in lines[last_week_idx + 1 :]:
         d = DONE_RE.match(line)
         if d:
             cat, task_text = d.group(1).strip(), d.group(2).strip()
@@ -532,7 +543,7 @@ def week() -> None:
         return
 
     total = sum(len(v) for v in entries.values())
-    icon  = cfg.state_icon("done")
+    icon = cfg.state_icon("done")
 
     def fmt_cat(name: str) -> str:
         ci = cfg.category_icon(name)
@@ -549,6 +560,7 @@ def week() -> None:
 # ---------------------------------------------------------------------------
 # pipeline / progress
 # ---------------------------------------------------------------------------
+
 
 @main.command()
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
@@ -570,6 +582,7 @@ def progress(as_json: bool) -> None:
 # completion
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 @click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]))
 def completion(shell: str) -> None:
@@ -583,6 +596,7 @@ def completion(shell: str) -> None:
       fish: taskflow completion fish | source
     """
     import os
+
     env_var = f"_{main.name.upper().replace('-', '_')}_COMPLETE"
     os.environ[env_var] = f"{shell}_source"
     try:
@@ -595,15 +609,16 @@ def completion(shell: str) -> None:
 # Archive helper — called after any done write
 # ---------------------------------------------------------------------------
 
+
 def _maybe_archive(cfg: TaskflowConfig) -> None:
     """
     Check done.md week count and archive old weeks if needed.
     Silent on success — only surfaces output if weeks were actually archived.
     """
     archived = archive_old_weeks(
-        done_path   = cfg.state_path("done"),
-        archive_dir = cfg.archive_path,
-        keep_weeks  = cfg.done_weeks,
+        done_path=cfg.state_path("done"),
+        archive_dir=cfg.archive_path,
+        keep_weeks=cfg.done_weeks,
     )
     if archived:
         click.echo(f"  archived {archived} week(s) to {cfg.archive_path.relative_to(cfg.root)}/")

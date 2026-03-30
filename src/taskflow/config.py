@@ -18,23 +18,23 @@ CONFIG_FILE = ".taskflow.yml"
 
 # defaults used when states section is missing or partially specified
 STATE_DEFAULTS: dict[str, dict] = {
-    "now":     {"file": ".taskflow/backlog/0-now.md",     "icon": "▶"},
+    "now": {"file": ".taskflow/backlog/0-now.md", "icon": "▶"},
     "blocked": {"file": ".taskflow/backlog/1-blocked.md", "icon": "⊘"},
-    "paused":  {"file": ".taskflow/backlog/2-paused.md",  "icon": "⏸"},
-    "next":    {"file": ".taskflow/backlog/3-next.md",    "icon": "◈"},
-    "later":   {"file": ".taskflow/backlog/4-later.md",   "icon": "◇"},
-    "done":    {"file": ".taskflow/backlog/done.md",       "icon": "✓"},
+    "paused": {"file": ".taskflow/backlog/2-paused.md", "icon": "⏸"},
+    "next": {"file": ".taskflow/backlog/3-next.md", "icon": "◈"},
+    "later": {"file": ".taskflow/backlog/4-later.md", "icon": "◇"},
+    "done": {"file": ".taskflow/backlog/done.md", "icon": "✓"},
 }
 
 # the order transitions are defined matters for help text and validation
 WORKFLOW_TRANSITIONS: dict[str, tuple[str, str, str]] = {
-    "promote": ("later",   "next",    "promote"),
-    "start":   ("next",    "now",     "start"),
-    "block":   ("now",     "blocked", "block"),
-    "unblock": ("blocked", "now",     "unblock"),
-    "pause":   ("now",     "paused",  "pause"),
-    "unpause": ("paused",  "now",     "unpause"),
-    "backlog": ("now",     "next",    "backlog"),
+    "promote": ("later", "next", "promote"),
+    "start": ("next", "now", "start"),
+    "block": ("now", "blocked", "block"),
+    "unblock": ("blocked", "now", "unblock"),
+    "pause": ("now", "paused", "pause"),
+    "unpause": ("paused", "now", "unpause"),
+    "backlog": ("now", "next", "backlog"),
 }
 
 
@@ -175,9 +175,7 @@ def load_config(root: Optional[Path] = None) -> TaskflowConfig:
     if root is None:
         root = find_root()
     if root is None:
-        raise click.UsageError(
-            "No .taskflow.yml found. Run `taskflow init` to set up a project."
-        )
+        raise click.UsageError("No .taskflow.yml found. Run `taskflow init` to set up a project.")
 
     config_path = root / CONFIG_FILE
     try:
