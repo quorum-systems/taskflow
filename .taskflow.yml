@@ -10,22 +10,22 @@
 
 states:
   now:
-    file: "backlog/0-now.md"
+    file: ".taskflow/backlog/0-now.md"
     icon: "▶"
   blocked:
-    file: "backlog/1-blocked.md"
+    file: ".taskflow/backlog/1-blocked.md"
     icon: "⊘"
   paused:
-    file: "backlog/2-paused.md"
+    file: ".taskflow/backlog/2-paused.md"
     icon: "⏸"
   next:
-    file: "backlog/3-next.md"
+    file: ".taskflow/backlog/3-next.md"
     icon: "◈"
   later:
-    file: "backlog/4-later.md"
+    file: ".taskflow/backlog/4-later.md"
     icon: "◇"
   done:
-    file: "backlog/done.md"
+    file: ".taskflow/backlog/done.md"
     icon: "✓"
 
 # ---------------------------------------------------------------------------
@@ -65,6 +65,6 @@ phases:
 settings:
   repo_name: "taskflow"
   done_weeks: 4
-  weekly_plan_dir: "changelog/weekly"
+  weekly_plan_dir: ".taskflow/changelog/weekly"
   # archive_path defaults to backlog/archive/ — uncomment to override
-  # archive_path: "backlog/archive"
+  archive_path: ".taskflow/backlog/archive"
