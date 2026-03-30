@@ -7,7 +7,7 @@ name = "taskflow-git"
 version = "0.3.0"
 description = "Git-native task management for people who live in the terminal."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Patrick McClory", email = "patrick@quorumsystems.io" }]
 keywords = ["task-management", "git", "cli", "productivity", "devtools"]
