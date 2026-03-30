@@ -19,13 +19,11 @@ from typing import Optional
 from taskflow.config import TaskflowConfig
 from taskflow.tasklib import WEEK_HEADING_RE
 
-CATEGORY_RE = re.compile(
-    r"^###\s+(?:[\U0001F300-\U0001FFFE\u2600-\u26FF\u2700-\u27BF]\s*)?(.*\S.*?)\s*$"
-)
-PHASE_RE   = re.compile(r"^##\s+(?!Week of)(.*\S.*?)\s*$")
+CATEGORY_RE = re.compile(r"^###\s+(?:[\U0001F300-\U0001FFFE\u2600-\u26FF\u2700-\u27BF]\s*)?(.*\S.*?)\s*$")
+PHASE_RE = re.compile(r"^##\s+(?!Week of)(.*\S.*?)\s*$")
 DIVIDER_RE = re.compile(r"^---\s*$")
-DONE_RE    = re.compile(r"^\[[\d\s:\-]+\]\s+done:\s+\(([^)]+)\)\s+-\s+.+$")
-TASK_RE    = re.compile(r"^\s*[*-]\s+\S")
+DONE_RE = re.compile(r"^\[[\d\s:\-]+\]\s+done:\s+\(([^)]+)\)\s+-\s+.+$")
+TASK_RE = re.compile(r"^\s*[*-]\s+\S")
 
 UNCATEGORIZED = "Uncategorized"
 
@@ -121,10 +119,7 @@ def ordered_categories(
         seen.add(name)
 
     # uncategorized always last, only if present
-    has_unc = any(
-        UNCATEGORIZED in counts
-        for counts in list(backlog_counts.values()) + [c for _, c in week_counts]
-    )
+    has_unc = any(UNCATEGORIZED in counts for counts in list(backlog_counts.values()) + [c for _, c in week_counts])
     if has_unc:
         ordered.append(UNCATEGORIZED)
 
@@ -134,6 +129,7 @@ def ordered_categories(
 # ---------------------------------------------------------------------------
 # Table renderer
 # ---------------------------------------------------------------------------
+
 
 def _pad(s: str, width: int, align: str = "left") -> str:
     s = str(s)
@@ -180,11 +176,12 @@ def _cat_label(name: str, config: TaskflowConfig) -> str:
 # progress report
 # ---------------------------------------------------------------------------
 
+
 def report_progress(config: TaskflowConfig, as_json: bool = False, max_weeks: int = 5) -> str:
-    now_counts   = count_tasks_by_category(config.state_path("now"))
+    now_counts = count_tasks_by_category(config.state_path("now"))
     done_by_week = parse_done_by_week(config.state_path("done"))
-    weeks        = done_by_week[:max_weeks]
-    categories   = ordered_categories({"now": now_counts}, weeks, config)
+    weeks = done_by_week[:max_weeks]
+    categories = ordered_categories({"now": now_counts}, weeks, config)
 
     if as_json:
         data = {
@@ -199,16 +196,12 @@ def report_progress(config: TaskflowConfig, as_json: bool = False, max_weeks: in
             data["rows"].append(row)
         return json.dumps(data, indent=2)
 
-    now_icon  = config.state_icon("now")
+    now_icon = config.state_icon("now")
     done_icon = config.state_icon("done")
 
-    headers    = ["Category", f"{now_icon} Now".strip()] + [f"{done_icon} {_fmt_week(w)}".strip() for w, _ in weeks]
+    headers = ["Category", f"{now_icon} Now".strip()] + [f"{done_icon} {_fmt_week(w)}".strip() for w, _ in weeks]
     col_aligns = ["left"] + ["right"] * (1 + len(weeks))
-    rows = [
-        [_cat_label(cat, config), str(now_counts.get(cat, 0))]
-        + [str(c.get(cat, 0)) for _, c in weeks]
-        for cat in categories
-    ]
+    rows = [[_cat_label(cat, config), str(now_counts.get(cat, 0))] + [str(c.get(cat, 0)) for _, c in weeks] for cat in categories]
     return f"\n  progress — now vs. completed by week\n\n{render_table(headers, rows, col_aligns)}\n"
 
 
@@ -216,47 +209,54 @@ def report_progress(config: TaskflowConfig, as_json: bool = False, max_weeks: in
 # pipeline report
 # ---------------------------------------------------------------------------
 
+
 def report_pipeline(config: TaskflowConfig, as_json: bool = False) -> str:
-    later_counts   = count_tasks_by_category(config.state_path("later"))
-    next_counts    = count_tasks_by_category(config.state_path("next"))
-    paused_counts  = count_tasks_by_category(config.state_path("paused"))
+    later_counts = count_tasks_by_category(config.state_path("later"))
+    next_counts = count_tasks_by_category(config.state_path("next"))
+    paused_counts = count_tasks_by_category(config.state_path("paused"))
     blocked_counts = count_tasks_by_category(config.state_path("blocked"))
-    now_counts     = count_tasks_by_category(config.state_path("now"))
-    done_by_week   = parse_done_by_week(config.state_path("done"))
+    now_counts = count_tasks_by_category(config.state_path("now"))
+    done_by_week = parse_done_by_week(config.state_path("done"))
 
     this_week_counts = done_by_week[0][1] if done_by_week else {}
-    this_week_date   = done_by_week[0][0] if done_by_week else None
+    this_week_date = done_by_week[0][0] if done_by_week else None
 
     all_counts = {
-        "later": later_counts, "next": next_counts,
-        "paused": paused_counts, "blocked": blocked_counts,
-        "now": now_counts, "this_week": this_week_counts,
+        "later": later_counts,
+        "next": next_counts,
+        "paused": paused_counts,
+        "blocked": blocked_counts,
+        "now": now_counts,
+        "this_week": this_week_counts,
     }
     categories = ordered_categories(all_counts, [], config)
 
     if as_json:
-        return json.dumps({
-            "report": "pipeline",
-            "columns": ["later", "next", "paused", "blocked", "now", "this_week"],
-            "this_week_heading": this_week_date,
-            "rows": [{
-                "category": cat,
-                "later":     later_counts.get(cat, 0),
-                "next":      next_counts.get(cat, 0),
-                "paused":    paused_counts.get(cat, 0),
-                "blocked":   blocked_counts.get(cat, 0),
-                "now":       now_counts.get(cat, 0),
-                "this_week": this_week_counts.get(cat, 0),
-            } for cat in categories],
-        }, indent=2)
+        return json.dumps(
+            {
+                "report": "pipeline",
+                "columns": ["later", "next", "paused", "blocked", "now", "this_week"],
+                "this_week_heading": this_week_date,
+                "rows": [
+                    {
+                        "category": cat,
+                        "later": later_counts.get(cat, 0),
+                        "next": next_counts.get(cat, 0),
+                        "paused": paused_counts.get(cat, 0),
+                        "blocked": blocked_counts.get(cat, 0),
+                        "now": now_counts.get(cat, 0),
+                        "this_week": this_week_counts.get(cat, 0),
+                    }
+                    for cat in categories
+                ],
+            },
+            indent=2,
+        )
 
     def si(key: str, fallback: str) -> str:
         return config.state_icon(key) or fallback
 
-    week_label = (
-        f"{si('done', '✓')} {_fmt_week(this_week_date)}".strip()
-        if this_week_date else "This Week"
-    )
+    week_label = f"{si('done', '✓')} {_fmt_week(this_week_date)}".strip() if this_week_date else "This Week"
 
     headers = [
         "Category",
@@ -268,14 +268,17 @@ def report_pipeline(config: TaskflowConfig, as_json: bool = False) -> str:
         week_label,
     ]
     col_aligns = ["left"] + ["right"] * 6
-    rows = [[
-        _cat_label(cat, config),
-        str(later_counts.get(cat, 0)),
-        str(next_counts.get(cat, 0)),
-        str(paused_counts.get(cat, 0)),
-        str(blocked_counts.get(cat, 0)),
-        str(now_counts.get(cat, 0)),
-        str(this_week_counts.get(cat, 0)),
-    ] for cat in categories]
+    rows = [
+        [
+            _cat_label(cat, config),
+            str(later_counts.get(cat, 0)),
+            str(next_counts.get(cat, 0)),
+            str(paused_counts.get(cat, 0)),
+            str(blocked_counts.get(cat, 0)),
+            str(now_counts.get(cat, 0)),
+            str(this_week_counts.get(cat, 0)),
+        ]
+        for cat in categories
+    ]
 
     return f"\n  pipeline — work in flight and completed this week\n\n{render_table(headers, rows, col_aligns)}\n"

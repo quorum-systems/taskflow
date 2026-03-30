@@ -10,10 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from taskflow.archive import archive_month_path, archive_old_weeks, parse_week_blocks
-
 
 SAMPLE_DONE = """\
 # Done

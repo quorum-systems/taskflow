@@ -18,8 +18,18 @@ import yaml
 def tmp_git_repo(tmp_path: Path) -> Path:
     """A temp directory with git initialized and a basic user config."""
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "test"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "test"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
     return tmp_path
 
 
@@ -29,12 +39,12 @@ def basic_config_data() -> dict:
     return {
         "categories": [
             {"name": "Engineering", "icon": "🔵", "aliases": []},
-            {"name": "Operations",  "icon": "🔴", "aliases": ["Ops"]},
-            {"name": "Product",     "icon": "🟡", "aliases": []},
+            {"name": "Operations", "icon": "🔴", "aliases": ["Ops"]},
+            {"name": "Product", "icon": "🟡", "aliases": []},
         ],
         "phases": [
             {"name": "Phase 1 — Foundation", "description": "Get started."},
-            {"name": "Phase 2 — Build",      "description": "Main work."},
+            {"name": "Phase 2 — Build", "description": "Main work."},
         ],
         "settings": {
             "repo_name": "Test Project",
@@ -58,17 +68,28 @@ def project_root(tmp_git_repo: Path, basic_config_data: dict) -> Path:
     backlog.mkdir()
 
     for name, content in [
-        ("0-now.md",     "# Now\n\n---\n\n### 🔵 Engineering\n\n---\n"),
+        ("0-now.md", "# Now\n\n---\n\n### 🔵 Engineering\n\n---\n"),
         ("1-blocked.md", "# Blocked\n\n---\n"),
-        ("2-paused.md",  "# Paused\n\n---\n"),
-        ("3-next.md",    "# Next\n\n---\n\n### 🔵 Engineering\n* write deployment docs\n* set up monitoring\n\n---\n\n### 🔴 Operations\n* configure alerting\n\n---\n"),
-        ("4-later.md",   "# Later\n\n---\n\n## Phase 1 — Foundation\n\n### 🔵 Engineering\n* evaluate caching layer\n\n---\n"),
-        ("done.md",      "# Done\n\nCompleted tasks.\n\n---\n"),
+        ("2-paused.md", "# Paused\n\n---\n"),
+        (
+            "3-next.md",
+            "# Next\n\n---\n\n### 🔵 Engineering\n* write deployment docs\n* set up monitoring\n\n---\n\n### 🔴 Operations\n* configure alerting\n\n---\n",
+        ),
+        (
+            "4-later.md",
+            "# Later\n\n---\n\n## Phase 1 — Foundation\n\n### 🔵 Engineering\n* evaluate caching layer\n\n---\n",
+        ),
+        ("done.md", "# Done\n\nCompleted tasks.\n\n---\n"),
     ]:
         (backlog / name).write_text(content, encoding="utf-8")
 
     # initial commit so git operations work
     subprocess.run(["git", "add", "."], cwd=tmp_git_repo, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_git_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=tmp_git_repo,
+        check=True,
+        capture_output=True,
+    )
 
     return tmp_git_repo

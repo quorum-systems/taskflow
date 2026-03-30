@@ -279,6 +279,7 @@ def cmd_add(state_name: str, category_query: str, task_text: str) -> int:
     if state_name == "done":
         sys.path.insert(0, str(SCRIPTS_DIR))
         from tasklib import append_done
+
         # category defaults to "Direct" if not resolvable
         cat_for_done = category_query if category_query else "Direct"
         matched_cat  = fuzzy_match_category(category_query)

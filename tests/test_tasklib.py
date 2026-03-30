@@ -12,21 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from taskflow.tasklib import (
-    append_done,
-    collapse_blank_lines,
-    complete_task,
-    find_task,
-    find_task_block,
-    latest_week_heading_date,
-    move_task,
-    normalize,
-    parse_sections,
-    remove_empty_sections,
-    serialize_lines,
-    strip_emoji,
-    task_text,
-)
+from taskflow.tasklib import append_done, complete_task, find_task, find_task_block, move_task, normalize, parse_sections, serialize_lines, strip_emoji, task_text
 
 
 class TestNormalize:
@@ -141,6 +127,7 @@ class TestFindTask:
 
     def test_no_match_raises(self, tmp_path: Path) -> None:
         import click
+
         lines = ["### Engineering", "* deploy MaaS 3.7", "---"]
         sections = self._sections(lines)
         src = tmp_path / "now.md"
@@ -149,6 +136,7 @@ class TestFindTask:
 
     def test_multiple_matches_raises(self, tmp_path: Path) -> None:
         import click
+
         lines = [
             "### Engineering",
             "* deploy MaaS",
@@ -223,6 +211,7 @@ class TestMoveTask:
 
     def test_raises_when_src_missing(self, tmp_path: Path) -> None:
         import click
+
         src = tmp_path / "missing.md"
         dst = tmp_path / "now.md"
         with pytest.raises(click.UsageError, match="does not exist"):
@@ -231,7 +220,7 @@ class TestMoveTask:
 
 class TestCompleteTask:
     def test_removes_from_src_and_appends_done(self, tmp_path: Path) -> None:
-        src  = tmp_path / "now.md"
+        src = tmp_path / "now.md"
         done = tmp_path / "done.md"
         src.write_text("### Engineering\n* deploy MaaS\n---\n")
 
@@ -242,7 +231,7 @@ class TestCompleteTask:
         assert "deploy MaaS" in done.read_text()
 
     def test_done_entry_format(self, tmp_path: Path) -> None:
-        src  = tmp_path / "now.md"
+        src = tmp_path / "now.md"
         done = tmp_path / "done.md"
         src.write_text("### Engineering\n* deploy MaaS\n---\n")
 

@@ -25,6 +25,7 @@ def runner() -> CliRunner:
 @pytest.fixture
 def run_in_project(project_root: Path, runner: CliRunner):
     """Return a helper that invokes CLI commands with cwd set to the project root."""
+
     def invoke(*args, **kwargs):
         with runner.isolated_filesystem(temp_dir=project_root.parent):
             old_cwd = os.getcwd()
@@ -33,6 +34,7 @@ def run_in_project(project_root: Path, runner: CliRunner):
                 return runner.invoke(main, args, catch_exceptions=False, **kwargs)
             finally:
                 os.chdir(old_cwd)
+
     return invoke
 
 
@@ -97,11 +99,9 @@ class TestStart:
 
     def test_commit_uses_full_task_text(self, run_in_project, project_root: Path) -> None:
         import subprocess
+
         run_in_project("start", "deployment")
-        log = subprocess.check_output(
-            ["git", "log", "--oneline", "-1"],
-            cwd=project_root, text=True
-        )
+        log = subprocess.check_output(["git", "log", "--oneline", "-1"], cwd=project_root, text=True)
         assert "write deployment docs" in log
 
 
@@ -190,6 +190,7 @@ class TestPipeline:
 
     def test_json_output(self, run_in_project) -> None:
         import json as _json
+
         result = run_in_project("pipeline", "--json")
         assert result.exit_code == 0
         data = _json.loads(result.output)
@@ -204,6 +205,7 @@ class TestProgress:
 
     def test_json_output(self, run_in_project) -> None:
         import json as _json
+
         result = run_in_project("progress", "--json")
         assert result.exit_code == 0
         data = _json.loads(result.output)
