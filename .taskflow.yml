@@ -1,0 +1,70 @@
+# .taskflow.yml
+# Run `taskflow setup` after editing to regenerate your backlog.
+# All sections except categories and phases are optional.
+
+# ---------------------------------------------------------------------------
+# States — file paths and terminal icons for each task state.
+# Paths are relative to this file unless absolute.
+# Remove this section entirely to use the defaults shown here.
+# ---------------------------------------------------------------------------
+
+states:
+  now:
+    file: "backlog/0-now.md"
+    icon: "▶"
+  blocked:
+    file: "backlog/1-blocked.md"
+    icon: "⊘"
+  paused:
+    file: "backlog/2-paused.md"
+    icon: "⏸"
+  next:
+    file: "backlog/3-next.md"
+    icon: "◈"
+  later:
+    file: "backlog/4-later.md"
+    icon: "◇"
+  done:
+    file: "backlog/done.md"
+    icon: "✓"
+
+# ---------------------------------------------------------------------------
+# Categories — define whatever makes sense for your project.
+# Icons are optional. Colored circles work well: 🔴 🟠 🟡 🟢 🔵 🟣 ⚫ ⚪ 🟤
+# ---------------------------------------------------------------------------
+
+categories:
+  - name: Engineering
+    icon: "🔵"
+    aliases: []
+
+  - name: Operations
+    icon: "🔴"
+    aliases: []
+
+  - name: Product
+    icon: "🟡"
+    aliases: []
+
+
+# ---------------------------------------------------------------------------
+# Phases — organise 4-later.md into planning horizons.
+# No effect on any other backlog file.
+# ---------------------------------------------------------------------------
+
+phases:
+  - name: "Next Up"
+    description: "Tasks that are important and should be done soon. These are the things you want to do after finishing your current work."
+  - name: "Ongoing Tinkering"
+    description: "Tasks that are interesting but not a priority. These are the things you want to do if you have free time, but they don't need to be done soon."
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+settings:
+  repo_name: "taskflow"
+  done_weeks: 4
+  weekly_plan_dir: "changelog/weekly"
+  # archive_path defaults to backlog/archive/ — uncomment to override
+  # archive_path: "backlog/archive"

@@ -13,10 +13,12 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 import click
+import yaml
 
-from taskflow.config import CONFIG_FILE, TaskflowConfig
+from taskflow.config import CONFIG_FILE, STATE_DEFAULTS, TaskflowConfig
 
 # starter config written by taskflow init
 STARTER_CONFIG = """\
@@ -100,19 +102,13 @@ settings:
 """
 
 WEEK_PLAN_BLOCK_START = "# === TASKFLOW GENERATED — do not edit below this line ==="
-WEEK_PLAN_BLOCK_END = "# === END TASKFLOW GENERATED ==="
+WEEK_PLAN_BLOCK_END   = "# === END TASKFLOW GENERATED ==="
 
 SIMPLE_STATE_TITLES = {
-    "now": ("Now", "Tasks actively being executed this week."),
-    "blocked": (
-        "Blocked",
-        "Tasks waiting on something external.\n\nNote what's blocking each one.",
-    ),
-    "paused": (
-        "Paused",
-        "Tasks deliberately on hold.\n\nNot blocked, not forgotten — just not now.",
-    ),
-    "next": ("Next", "Planned work queued for the next execution window."),
+    "now":     ("Now",     "Tasks actively being executed this week."),
+    "blocked": ("Blocked", "Tasks waiting on something external.\n\nNote what's blocking each one."),
+    "paused":  ("Paused",  "Tasks deliberately on hold.\n\nNot blocked, not forgotten — just not now."),
+    "next":    ("Next",    "Planned work queued for the next execution window."),
 }
 
 
@@ -133,16 +129,10 @@ def _build_simple_file(title: str, description: str, categories: list[dict]) -> 
 def _build_later_file(categories: list[dict], phases: list[dict]) -> str:
     cat_by_name = {c["name"]: c for c in categories}
     lines = [
-        "# Later",
-        "",
-        "Longer-horizon work organised by phase.",
-        "",
-        "Promote to next when the time is right:",
-        "",
-        "```",
-        'taskflow promote "task text"',
-        "```",
-        "",
+        "# Later", "",
+        "Longer-horizon work organised by phase.", "",
+        "Promote to next when the time is right:", "",
+        "```", 'taskflow promote "task text"', "```", "",
     ]
     for phase in phases:
         lines += ["---", "", f"## {phase['name']}"]
@@ -172,7 +162,12 @@ def _build_week_plan_block(categories: list[dict]) -> str:
         order += f"    {cat['name']!r},\n"
     order += "]"
 
-    return f"{WEEK_PLAN_BLOCK_START}\n" + "\n".join(alias_lines) + f"\n\n{order}\n" + f"{WEEK_PLAN_BLOCK_END}\n"
+    return (
+        f"{WEEK_PLAN_BLOCK_START}\n"
+        + "\n".join(alias_lines)
+        + f"\n\n{order}\n"
+        + f"{WEEK_PLAN_BLOCK_END}\n"
+    )
 
 
 def patch_week_plan(week_plan_path: Path, categories: list[dict], dry_run: bool) -> bool:
@@ -202,16 +197,26 @@ def install_git_aliases(root: Path) -> None:
     """
     Install git aliases that just call `taskflow <subcommand>`.
     Once taskflow is on PATH the aliases are trivial — no path resolution needed.
+    Skips silently if not in a git repo — init handles that case.
     """
+    # check we're actually in a git repo before attempting
+    try:
+        subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=str(root), check=True, capture_output=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return
+
     transitions = [
         ("promote", "promote"),
-        ("start", "start"),
-        ("block", "block"),
+        ("start",   "start"),
+        ("block",   "block"),
         ("unblock", "unblock"),
-        ("pause", "pause"),
+        ("pause",   "pause"),
         ("unpause", "unpause"),
         ("backlog", "backlog"),
-        ("done", "done"),
+        ("done",    "done"),
     ]
 
     try:
@@ -235,8 +240,8 @@ def run_setup(config: TaskflowConfig, force: bool = False, dry_run: bool = False
     Skips existing files unless force=True. Respects dry_run.
     """
     categories = config.categories
-    phases = config.phases
-    root = config.root
+    phases     = config.phases
+    root       = config.root
 
     click.echo(f"\ntaskflow setup — {config.repo_name}")
     click.echo(f"  {len(categories)} categories, {len(phases)} phases\n")
