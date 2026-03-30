@@ -363,6 +363,65 @@ def add(state: str, category: str, task: tuple) -> None:
 
 
 # ---------------------------------------------------------------------------
+# list
+# ---------------------------------------------------------------------------
+
+@main.command("list")
+@click.argument("state", default="now",
+                type=click.Choice(["now", "next", "later", "blocked", "paused"]))
+def list_tasks(state: str) -> None:
+    """
+    List tasks in a state. Defaults to 'now'.
+
+    \b
+    taskflow list           # tasks in now
+    taskflow list next      # tasks queued up
+    taskflow list blocked   # what's stuck
+    """
+    import re as _re
+    from taskflow.tasklib import CATEGORY_RE, PHASE_RE, TASK_RE
+
+    cfg  = load_config()
+    path = cfg.state_path(state)
+    icon = cfg.state_icon(state)
+
+    if not path.exists():
+        click.echo(f"\n  {icon} {state}  (empty)\n")
+        return
+
+    lines    = path.read_text(encoding="utf-8").splitlines()
+    current  = None
+    printed  = set()  # track which categories we've printed headings for
+    any_task = False
+
+    click.echo(f"\n  {icon} {state}\n")
+    for line in lines:
+        if PHASE_RE.match(line):
+            phase = line.lstrip("#").strip()
+            click.echo(f"  ── {phase}")
+            continue
+        m = CATEGORY_RE.match(line)
+        if m:
+            current = m.group(1).strip()  # canonical name (emoji stripped)
+            continue
+        t = TASK_RE.match(line)
+        if t:
+            if current and current not in printed and not line.startswith("  "):
+                cat_icon = cfg.category_icon(current)
+                label    = f"{cat_icon} {current}".strip() if cat_icon else current
+                click.echo(f"  {label}")
+                printed.add(current)
+            indent = "      " if line.startswith("  ") else "    "
+            click.echo(f"{indent}· {t.group(3)}")
+            if not line.startswith("  "):
+                any_task = True
+
+    if not any_task:
+        click.echo("    (empty)")
+    click.echo()
+
+
+# ---------------------------------------------------------------------------
 # status
 # ---------------------------------------------------------------------------
 

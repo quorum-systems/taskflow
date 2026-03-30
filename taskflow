@@ -39,12 +39,12 @@ SCRIPTS_DIR = REPO_ROOT / "scripts" / "git"
 # ---------------------------------------------------------------------------
 
 STATE_DEFAULTS = {
-    "now":     {"file": "backlog/0-now.md",     "icon": "▶"},
-    "blocked": {"file": "backlog/1-blocked.md", "icon": "⊘"},
-    "paused":  {"file": "backlog/2-paused.md",  "icon": "⏸"},
-    "next":    {"file": "backlog/3-next.md",     "icon": "◈"},
-    "later":   {"file": "backlog/4-later.md",    "icon": "◇"},
-    "done":    {"file": "backlog/done.md",       "icon": "✓"},
+    "now":     {"file": ".taskflow/backlog/0-now.md",     "icon": "▶"},
+    "blocked": {"file": ".taskflow/backlog/1-blocked.md", "icon": "⊘"},
+    "paused":  {"file": ".taskflow/backlog/2-paused.md",  "icon": "⏸"},
+    "next":    {"file": ".taskflow/backlog/3-next.md",     "icon": "◈"},
+    "later":   {"file": ".taskflow/backlog/4-later.md",    "icon": "◇"},
+    "done":    {"file": ".taskflow/backlog/done.md",       "icon": "✓"},
 }
 
 # Workflow transitions: command → (src_state, dst_state, commit_prefix)

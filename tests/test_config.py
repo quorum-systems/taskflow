@@ -9,8 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
-from taskflow.config import TaskflowConfig, find_root
+from taskflow.config import TaskflowConfig, find_root, load_config
 
 
 class TestFindRoot:
@@ -40,7 +41,7 @@ class TestTaskflowConfig:
         return TaskflowConfig(tmp_path, basic_config_data)
 
     def test_state_path_relative(self, cfg: TaskflowConfig, tmp_path: Path) -> None:
-        assert cfg.state_path("now") == tmp_path / "backlog" / "0-now.md"
+        assert cfg.state_path("now") == tmp_path / ".taskflow" / "backlog" / "0-now.md"
 
     def test_state_path_absolute_override(self, tmp_path: Path, basic_config_data: dict) -> None:
         basic_config_data["states"] = {"now": {"file": "/absolute/path/now.md"}}
@@ -102,8 +103,7 @@ class TestTaskflowConfig:
         assert cfg.done_weeks == 2
 
     def test_archive_path_default(self, cfg: TaskflowConfig, tmp_path: Path) -> None:
-        # default should be next to done.md in backlog/archive/
-        assert cfg.archive_path == tmp_path / "backlog" / "archive"
+        assert cfg.archive_path == tmp_path / ".taskflow" / "backlog" / "archive"
 
     def test_archive_path_override(self, tmp_path: Path, basic_config_data: dict) -> None:
         basic_config_data["settings"]["archive_path"] = "custom/archive"

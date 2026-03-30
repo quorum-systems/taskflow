@@ -1,24 +1,22 @@
 """
 setup_cmd.py — taskflow init and setup.
 
-init creates a new .taskflow.yml in the current directory.
+init creates .taskflow.yml in the current directory.
 setup regenerates backlog file skeletons and installs git aliases.
 
-Both write files relative to the project root — setup uses the discovered
-root, init uses cwd since there's no root yet.
+The week-plan patching logic that existed in the old standalone script
+version is gone — reports.py reads directly from config now.
 """
 
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 import click
 import yaml
 
-from taskflow.config import CONFIG_FILE, STATE_DEFAULTS, TaskflowConfig
+from taskflow.config import CONFIG_FILE, TaskflowConfig
 
 # starter config written by taskflow init
 STARTER_CONFIG = """\
@@ -34,22 +32,22 @@ STARTER_CONFIG = """\
 
 states:
   now:
-    file: "backlog/0-now.md"
+    file: ".taskflow/backlog/0-now.md"
     icon: "▶"
   blocked:
-    file: "backlog/1-blocked.md"
+    file: ".taskflow/backlog/1-blocked.md"
     icon: "⊘"
   paused:
-    file: "backlog/2-paused.md"
+    file: ".taskflow/backlog/2-paused.md"
     icon: "⏸"
   next:
-    file: "backlog/3-next.md"
+    file: ".taskflow/backlog/3-next.md"
     icon: "◈"
   later:
-    file: "backlog/4-later.md"
+    file: ".taskflow/backlog/4-later.md"
     icon: "◇"
   done:
-    file: "backlog/done.md"
+    file: ".taskflow/backlog/done.md"
     icon: "✓"
 
 # ---------------------------------------------------------------------------
@@ -75,7 +73,7 @@ categories:
     aliases: []
 
 # ---------------------------------------------------------------------------
-# Phases — organise 4-later.md into planning horizons.
+# Phases — organise the later file into planning horizons.
 # No effect on any other backlog file.
 # ---------------------------------------------------------------------------
 
@@ -96,13 +94,10 @@ phases:
 settings:
   repo_name: "{repo_name}"
   done_weeks: 4
-  weekly_plan_dir: "changelog/weekly"
-  # archive_path defaults to backlog/archive/ — uncomment to override
-  # archive_path: "backlog/archive"
+  weekly_plan_dir: ".taskflow/changelog/weekly"
+  # archive_path defaults to .taskflow/backlog/archive/ — uncomment to override
+  # archive_path: ".taskflow/backlog/archive"
 """
-
-WEEK_PLAN_BLOCK_START = "# === TASKFLOW GENERATED — do not edit below this line ==="
-WEEK_PLAN_BLOCK_END   = "# === END TASKFLOW GENERATED ==="
 
 SIMPLE_STATE_TITLES = {
     "now":     ("Now",     "Tasks actively being executed this week."),
@@ -148,51 +143,6 @@ def _build_later_file(categories: list[dict], phases: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _build_week_plan_block(categories: list[dict]) -> str:
-    alias_lines = ["CATEGORY_ALIASES = {"]
-    for cat in categories:
-        name = cat["name"]
-        for alias in cat.get("aliases", []):
-            alias_lines.append(f"    {alias!r}: {name!r},")
-        alias_lines.append(f"    {name!r}: {name!r},")
-    alias_lines.append("}")
-
-    order = "DEFAULT_CATEGORY_ORDER = [\n"
-    for cat in categories:
-        order += f"    {cat['name']!r},\n"
-    order += "]"
-
-    return (
-        f"{WEEK_PLAN_BLOCK_START}\n"
-        + "\n".join(alias_lines)
-        + f"\n\n{order}\n"
-        + f"{WEEK_PLAN_BLOCK_END}\n"
-    )
-
-
-def patch_week_plan(week_plan_path: Path, categories: list[dict], dry_run: bool) -> bool:
-    """Regenerate the TASKFLOW GENERATED block in week-plan. Returns True if changed."""
-    if not week_plan_path.exists():
-        return False
-    content = week_plan_path.read_text(encoding="utf-8")
-    new_block = _build_week_plan_block(categories)
-
-    if WEEK_PLAN_BLOCK_START in content:
-        pattern = re.compile(
-            re.escape(WEEK_PLAN_BLOCK_START) + r".*?" + re.escape(WEEK_PLAN_BLOCK_END) + r"\n?",
-            re.DOTALL,
-        )
-        new_content = pattern.sub(new_block, content)
-    else:
-        new_content = content.rstrip() + "\n\n" + new_block
-
-    if new_content == content:
-        return False
-    if not dry_run:
-        week_plan_path.write_text(new_content, encoding="utf-8")
-    return True
-
-
 def install_git_aliases(root: Path) -> None:
     """
     Install git aliases that just call `taskflow <subcommand>`.
@@ -223,9 +173,7 @@ def install_git_aliases(root: Path) -> None:
         for alias, subcmd in transitions:
             subprocess.run(
                 ["git", "config", f"alias.{alias}", f"!taskflow {subcmd}"],
-                cwd=str(root),
-                check=True,
-                capture_output=True,
+                cwd=str(root), check=True, capture_output=True,
             )
         click.echo("  git aliases installed")
     except subprocess.CalledProcessError as e:
@@ -261,7 +209,7 @@ def run_setup(config: TaskflowConfig, force: bool = False, dry_run: bool = False
                 path.write_text(content, encoding="utf-8")
             changed.append(str(path.relative_to(root)))
 
-    later_path = config.state_path("later")
+    later_path    = config.state_path("later")
     later_content = _build_later_file(categories, phases)
     if not dry_run:
         later_path.parent.mkdir(parents=True, exist_ok=True)
@@ -290,7 +238,6 @@ def run_setup(config: TaskflowConfig, force: bool = False, dry_run: bool = False
             (weekly_dir / ".gitkeep").touch()
         changed.append(str(weekly_dir.relative_to(root)) + "/")
 
-    # archive dir — just make sure it exists
     archive_dir = config.archive_path
     if not archive_dir.exists() and not dry_run:
         archive_dir.mkdir(parents=True, exist_ok=True)

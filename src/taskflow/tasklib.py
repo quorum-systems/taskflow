@@ -32,7 +32,6 @@ TASK_RE = re.compile(r"^(\s*)([*-]\s+)(.*\S.*?)\s*$")
 # Text helpers
 # ---------------------------------------------------------------------------
 
-
 def normalize(text: str) -> str:
     """Collapse whitespace and lowercase — used for task matching."""
     return re.sub(r"\s+", " ", text.strip()).lower()
@@ -51,7 +50,6 @@ def fuzzy_match(query: str, candidate: str) -> bool:
 # ---------------------------------------------------------------------------
 # Line classifiers
 # ---------------------------------------------------------------------------
-
 
 def is_category(line: str) -> bool:
     return CATEGORY_RE.match(line) is not None
@@ -83,7 +81,6 @@ def task_text(line: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Section parsing
 # ---------------------------------------------------------------------------
-
 
 def parse_sections(lines: list[str]) -> list[dict]:
     """
@@ -128,15 +125,13 @@ def parse_sections(lines: list[str]) -> list[dict]:
 
         end = j if (j < n and is_divider(lines[j])) else j - 1
 
-        sections.append(
-            {
-                "start": start,
-                "end": end,
-                "heading": heading,
-                "heading_raw": heading_raw,
-                "tasks": tasks,
-            }
-        )
+        sections.append({
+            "start": start,
+            "end": end,
+            "heading": heading,
+            "heading_raw": heading_raw,
+            "tasks": tasks,
+        })
 
         i = j + 1 if (j < n and is_divider(lines[j])) else j
 
@@ -171,11 +166,19 @@ def find_task(sections: list[dict], query: str, src_path: Path) -> tuple[dict, i
                 matches.append((section, line_idx, txt, raw_line))
 
     if not matches:
-        raise click.UsageError(f"No task matching '{query}' in {src_path.name}")
+        raise click.UsageError(
+            f"No task matching '{query}' in {src_path.name}\n"
+            f"  Run `taskflow list` to see what's there."
+        )
 
     if len(matches) > 1:
-        lines = "\n".join(f"  line {idx + 1}  [{sec['heading']}]  {txt}" for sec, idx, txt, _ in matches)
-        raise click.UsageError(f"Multiple tasks match '{query}' — be more specific:\n{lines}")
+        lines = "\n".join(
+            f"  line {idx + 1}  [{sec['heading']}]  {txt}"
+            for sec, idx, txt, _ in matches
+        )
+        raise click.UsageError(
+            f"Multiple tasks match '{query}' — be more specific:\n{lines}"
+        )
 
     return matches[0]
 
@@ -183,7 +186,6 @@ def find_task(sections: list[dict], query: str, src_path: Path) -> tuple[dict, i
 # ---------------------------------------------------------------------------
 # Task block (parent + children)
 # ---------------------------------------------------------------------------
-
 
 def find_task_block(lines: list[str], section_end: int, start_idx: int) -> tuple[int, int]:
     """
@@ -211,7 +213,6 @@ def find_task_block(lines: list[str], section_end: int, start_idx: int) -> tuple
 # ---------------------------------------------------------------------------
 # Blank line handling and serialisation
 # ---------------------------------------------------------------------------
-
 
 def collapse_blank_lines(lines: list[str]) -> list[str]:
     """Never let two blank lines sit next to each other."""
@@ -246,7 +247,6 @@ def serialize_lines(lines: list[str], path: Path) -> None:
 # Empty section removal
 # ---------------------------------------------------------------------------
 
-
 def remove_empty_sections(lines: list[str]) -> list[str]:
     sections = parse_sections(lines)
     remove_ranges = []
@@ -279,7 +279,6 @@ def remove_empty_sections(lines: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 # Destination insertion
 # ---------------------------------------------------------------------------
-
 
 def insert_into_destination(
     dst_lines: list[str],
@@ -327,7 +326,6 @@ def insert_into_destination(
 # Done log
 # ---------------------------------------------------------------------------
 
-
 def latest_week_heading_date(lines: list[str]) -> Optional[date]:
     """Return the date from the most recent ## Week of heading, or None."""
     latest: Optional[date] = None
@@ -373,7 +371,6 @@ def append_done(done_path: Path, category: str, task_text_str: str) -> None:
 # ---------------------------------------------------------------------------
 # Task move
 # ---------------------------------------------------------------------------
-
 
 def move_task(src_path: Path, dst_path: Path, query: str) -> tuple[str, str]:
     """

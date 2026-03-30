@@ -18,23 +18,23 @@ CONFIG_FILE = ".taskflow.yml"
 
 # defaults used when states section is missing or partially specified
 STATE_DEFAULTS: dict[str, dict] = {
-    "now": {"file": "backlog/0-now.md", "icon": "▶"},
-    "blocked": {"file": "backlog/1-blocked.md", "icon": "⊘"},
-    "paused": {"file": "backlog/2-paused.md", "icon": "⏸"},
-    "next": {"file": "backlog/3-next.md", "icon": "◈"},
-    "later": {"file": "backlog/4-later.md", "icon": "◇"},
-    "done": {"file": "backlog/done.md", "icon": "✓"},
+    "now":     {"file": ".taskflow/backlog/0-now.md",     "icon": "▶"},
+    "blocked": {"file": ".taskflow/backlog/1-blocked.md", "icon": "⊘"},
+    "paused":  {"file": ".taskflow/backlog/2-paused.md",  "icon": "⏸"},
+    "next":    {"file": ".taskflow/backlog/3-next.md",    "icon": "◈"},
+    "later":   {"file": ".taskflow/backlog/4-later.md",   "icon": "◇"},
+    "done":    {"file": ".taskflow/backlog/done.md",       "icon": "✓"},
 }
 
 # the order transitions are defined matters for help text and validation
 WORKFLOW_TRANSITIONS: dict[str, tuple[str, str, str]] = {
-    "promote": ("later", "next", "promote"),
-    "start": ("next", "now", "start"),
-    "block": ("now", "blocked", "block"),
-    "unblock": ("blocked", "now", "unblock"),
-    "pause": ("now", "paused", "pause"),
-    "unpause": ("paused", "now", "unpause"),
-    "backlog": ("now", "next", "backlog"),
+    "promote": ("later",   "next",    "promote"),
+    "start":   ("next",    "now",     "start"),
+    "block":   ("now",     "blocked", "block"),
+    "unblock": ("blocked", "now",     "unblock"),
+    "pause":   ("now",     "paused",  "pause"),
+    "unpause": ("paused",  "now",     "unpause"),
+    "backlog": ("now",     "next",    "backlog"),
 }
 
 
@@ -126,7 +126,7 @@ class TaskflowConfig:
 
     @property
     def weekly_plan_dir(self) -> Path:
-        d = self._data.get("settings", {}).get("weekly_plan_dir", "changelog/weekly")
+        d = self._data.get("settings", {}).get("weekly_plan_dir", ".taskflow/changelog/weekly")
         p = Path(d)
         return p if p.is_absolute() else self.root / p
 
@@ -137,8 +137,8 @@ class TaskflowConfig:
 
     @property
     def archive_path(self) -> Path:
-        """Where archived week files live. Defaults next to the done file."""
-        default_archive = str(self.state_path("done").parent / "archive")
+        """Where archived week files live. Defaults inside .taskflow/backlog/archive/."""
+        default_archive = ".taskflow/backlog/archive"
         d = self._data.get("settings", {}).get("archive_path", default_archive)
         p = Path(d)
         return p if p.is_absolute() else self.root / p
@@ -175,7 +175,9 @@ def load_config(root: Optional[Path] = None) -> TaskflowConfig:
     if root is None:
         root = find_root()
     if root is None:
-        raise click.UsageError("No .taskflow.yml found. Run `taskflow init` to set up a project.")
+        raise click.UsageError(
+            "No .taskflow.yml found. Run `taskflow init` to set up a project."
+        )
 
     config_path = root / CONFIG_FILE
     try:

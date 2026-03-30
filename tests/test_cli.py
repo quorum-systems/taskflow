@@ -25,7 +25,6 @@ def runner() -> CliRunner:
 @pytest.fixture
 def run_in_project(project_root: Path, runner: CliRunner):
     """Return a helper that invokes CLI commands with cwd set to the project root."""
-
     def invoke(*args, **kwargs):
         with runner.isolated_filesystem(temp_dir=project_root.parent):
             old_cwd = os.getcwd()
@@ -34,7 +33,6 @@ def run_in_project(project_root: Path, runner: CliRunner):
                 return runner.invoke(main, args, catch_exceptions=False, **kwargs)
             finally:
                 os.chdir(old_cwd)
-
     return invoke
 
 
@@ -57,8 +55,8 @@ class TestInit:
         with runner.isolated_filesystem(temp_dir=tmp_git_repo.parent):
             os.chdir(tmp_git_repo)
             runner.invoke(main, ["init"], catch_exceptions=False)
-            assert (tmp_git_repo / "backlog" / "0-now.md").exists()
-            assert (tmp_git_repo / "backlog" / "done.md").exists()
+            assert (tmp_git_repo / ".taskflow" / "backlog" / "0-now.md").exists()
+            assert (tmp_git_repo / ".taskflow" / "backlog" / "done.md").exists()
 
     def test_error_if_already_exists(self, runner: CliRunner, project_root: Path) -> None:
         os.chdir(project_root)
@@ -94,14 +92,16 @@ class TestStart:
     def test_moves_task_to_now(self, run_in_project, project_root: Path) -> None:
         result = run_in_project("start", "deployment docs")
         assert result.exit_code == 0
-        assert "write deployment docs" in (project_root / "backlog/0-now.md").read_text()
-        assert "write deployment docs" not in (project_root / "backlog/3-next.md").read_text()
+        assert "write deployment docs" in (project_root / ".taskflow/backlog/0-now.md").read_text()
+        assert "write deployment docs" not in (project_root / ".taskflow/backlog/3-next.md").read_text()
 
     def test_commit_uses_full_task_text(self, run_in_project, project_root: Path) -> None:
         import subprocess
-
         run_in_project("start", "deployment")
-        log = subprocess.check_output(["git", "log", "--oneline", "-1"], cwd=project_root, text=True)
+        log = subprocess.check_output(
+            ["git", "log", "--oneline", "-1"],
+            cwd=project_root, text=True
+        )
         assert "write deployment docs" in log
 
 
@@ -112,8 +112,8 @@ class TestDone:
         # then mark it done
         result = run_in_project("done", "deployment")
         assert result.exit_code == 0
-        assert "write deployment docs" not in (project_root / "backlog/0-now.md").read_text()
-        assert "write deployment docs" in (project_root / "backlog/done.md").read_text()
+        assert "write deployment docs" not in (project_root / ".taskflow/backlog/0-now.md").read_text()
+        assert "write deployment docs" in (project_root / ".taskflow/backlog/done.md").read_text()
 
 
 class TestBlock:
@@ -121,8 +121,8 @@ class TestBlock:
         run_in_project("start", "deployment docs")
         result = run_in_project("block", "deployment")
         assert result.exit_code == 0
-        assert "write deployment docs" in (project_root / "backlog/1-blocked.md").read_text()
-        assert "write deployment docs" not in (project_root / "backlog/0-now.md").read_text()
+        assert "write deployment docs" in (project_root / ".taskflow/backlog/1-blocked.md").read_text()
+        assert "write deployment docs" not in (project_root / ".taskflow/backlog/0-now.md").read_text()
 
 
 class TestUnblock:
@@ -131,31 +131,51 @@ class TestUnblock:
         run_in_project("block", "deployment")
         result = run_in_project("unblock", "deployment")
         assert result.exit_code == 0
-        assert "write deployment docs" in (project_root / "backlog/0-now.md").read_text()
+        assert "write deployment docs" in (project_root / ".taskflow/backlog/0-now.md").read_text()
 
 
 class TestAdd:
     def test_adds_to_next(self, run_in_project, project_root: Path) -> None:
         result = run_in_project("add", "next", "Eng", "evaluate caching")
         assert result.exit_code == 0
-        assert "evaluate caching" in (project_root / "backlog/3-next.md").read_text()
+        assert "evaluate caching" in (project_root / ".taskflow/backlog/3-next.md").read_text()
 
     def test_fuzzy_category(self, run_in_project, project_root: Path) -> None:
         result = run_in_project("add", "next", "ops", "update firewall rules")
         assert result.exit_code == 0
-        assert "update firewall rules" in (project_root / "backlog/3-next.md").read_text()
+        assert "update firewall rules" in (project_root / ".taskflow/backlog/3-next.md").read_text()
 
     def test_add_done_directly(self, run_in_project, project_root: Path) -> None:
         result = run_in_project("add", "done", "Eng", "emergency hotfix deployed")
         assert result.exit_code == 0
-        assert "emergency hotfix deployed" in (project_root / "backlog/done.md").read_text()
+        assert "emergency hotfix deployed" in (project_root / ".taskflow/backlog/done.md").read_text()
 
     def test_unknown_state_errors(self, run_in_project) -> None:
         result = run_in_project("add", "banana", "Eng", "some task")
         assert result.exit_code != 0
 
 
-class TestStatus:
+class TestList:
+    def test_list_now_default(self, run_in_project) -> None:
+        result = run_in_project("list")
+        assert result.exit_code == 0
+        assert "now" in result.output
+
+    def test_list_next_shows_tasks(self, run_in_project) -> None:
+        result = run_in_project("list", "next")
+        assert result.exit_code == 0
+        assert "write deployment docs" in result.output
+        assert "Engineering" in result.output
+
+    def test_list_empty_state(self, run_in_project) -> None:
+        result = run_in_project("list", "blocked")
+        assert result.exit_code == 0
+        assert "empty" in result.output
+
+    def test_no_match_error_includes_hint(self, run_in_project) -> None:
+        result = run_in_project("start", "this does not exist")
+        assert result.exit_code != 0
+        assert "taskflow list" in result.output
     def test_shows_now_tasks(self, run_in_project, project_root: Path) -> None:
         run_in_project("start", "deployment docs")
         result = run_in_project("status")
@@ -190,7 +210,6 @@ class TestPipeline:
 
     def test_json_output(self, run_in_project) -> None:
         import json as _json
-
         result = run_in_project("pipeline", "--json")
         assert result.exit_code == 0
         data = _json.loads(result.output)
@@ -205,7 +224,6 @@ class TestProgress:
 
     def test_json_output(self, run_in_project) -> None:
         import json as _json
-
         result = run_in_project("progress", "--json")
         assert result.exit_code == 0
         data = _json.loads(result.output)
