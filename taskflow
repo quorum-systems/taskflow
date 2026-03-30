@@ -1,0 +1,802 @@
+#!/usr/bin/env python3
+"""
+taskflow — git-native task management CLI
+
+Usage:
+    taskflow setup   [--force] [--dry-run]
+    taskflow promote <task>           later   → next
+    taskflow start   <task>           next    → now
+    taskflow block   <task>           now     → blocked
+    taskflow unblock <task>           blocked → now
+    taskflow pause   <task>           now     → paused
+    taskflow unpause <task>           paused  → now
+    taskflow backlog <task>           now     → next
+    taskflow done    <task>           now     → done + commit
+    taskflow add     <state> <cat> <task>     add task directly to any state
+    taskflow status                   active tasks, blockers, holds
+    taskflow week                     this week's completions from done.md
+    taskflow pipeline [--json]        work in flight across all states
+    taskflow progress [--json]        now vs. done counts across 5 weeks
+
+Git aliases call this script directly — both paths are fully equivalent.
+"""
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+REPO_ROOT   = Path(__file__).resolve().parent
+CONFIG_PATH = REPO_ROOT / ".taskflow.yml"
+SCRIPTS_DIR = REPO_ROOT / "scripts" / "git"
+
+# ---------------------------------------------------------------------------
+# State defaults — used when .taskflow.yml omits the states section
+# ---------------------------------------------------------------------------
+
+STATE_DEFAULTS = {
+    "now":     {"file": "backlog/0-now.md",     "icon": "▶"},
+    "blocked": {"file": "backlog/1-blocked.md", "icon": "⊘"},
+    "paused":  {"file": "backlog/2-paused.md",  "icon": "⏸"},
+    "next":    {"file": "backlog/3-next.md",     "icon": "◈"},
+    "later":   {"file": "backlog/4-later.md",    "icon": "◇"},
+    "done":    {"file": "backlog/done.md",       "icon": "✓"},
+}
+
+# Workflow transitions: command → (src_state, dst_state, commit_prefix)
+WORKFLOW_TRANSITIONS = {
+    "promote": ("later",   "next",    "promote"),
+    "start":   ("next",    "now",     "start"),
+    "block":   ("now",     "blocked", "block"),
+    "unblock": ("blocked", "now",     "unblock"),
+    "pause":   ("now",     "paused",  "pause"),
+    "unpause": ("paused",  "now",     "unpause"),
+    "backlog": ("now",     "next",    "backlog"),
+}
+
+
+# ---------------------------------------------------------------------------
+# Config loading
+# ---------------------------------------------------------------------------
+
+_cfg_cache: Optional[dict] = None
+
+def load_config() -> dict:
+    global _cfg_cache
+    if _cfg_cache is not None:
+        return _cfg_cache
+    if not CONFIG_PATH.exists():
+        _cfg_cache = {}
+        return _cfg_cache
+    try:
+        import yaml
+        with CONFIG_PATH.open(encoding="utf-8") as f:
+            _cfg_cache = yaml.safe_load(f) or {}
+    except ImportError:
+        _cfg_cache = {}
+    except Exception as e:
+        print(f"warning: could not parse .taskflow.yml: {e}", file=sys.stderr)
+        _cfg_cache = {}
+    return _cfg_cache
+
+
+def get_state(name: str) -> dict:
+    """Return merged state config for a named state, with defaults applied."""
+    cfg = load_config()
+    states = cfg.get("states", {})
+    default = STATE_DEFAULTS.get(name, {})
+    user = states.get(name, {})
+    return {
+        "file": user.get("file") or default.get("file", f"backlog/{name}.md"),
+        "icon": user.get("icon") or default.get("icon", ""),
+    }
+
+
+def state_file(name: str) -> str:
+    return get_state(name)["file"]
+
+
+def state_icon(name: str) -> str:
+    return get_state(name)["icon"]
+
+
+def get_categories() -> List[dict]:
+    return load_config().get("categories", [])
+
+
+def get_category_icon(name: str) -> str:
+    """Return the icon for a category name, or empty string."""
+    for cat in get_categories():
+        if cat.get("name", "").lower() == name.lower():
+            return cat.get("icon", "")
+    return ""
+
+
+def fuzzy_match_category(query: str) -> Optional[str]:
+    """
+    Find a category by case-insensitive substring match.
+    Returns the canonical name if exactly one match, None if zero or multiple.
+    """
+    q = query.strip().lower()
+    cats = get_categories()
+    matches = [c["name"] for c in cats if q in c["name"].lower()]
+    if len(matches) == 1:
+        return matches[0]
+    # also try aliases
+    if not matches:
+        for cat in cats:
+            for alias in cat.get("aliases", []):
+                if q in alias.lower():
+                    matches.append(cat["name"])
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Git helpers
+# ---------------------------------------------------------------------------
+
+def git_root() -> Path:
+    try:
+        root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+        return Path(root)
+    except subprocess.CalledProcessError:
+        print("error: not inside a git repository.", file=sys.stderr)
+        sys.exit(1)
+
+
+def git_add_and_commit(root: Path, files: List[str], message: str) -> int:
+    rc = subprocess.run(["git", "-C", str(root), "add"] + files).returncode
+    if rc != 0:
+        return rc
+    return subprocess.run(["git", "-C", str(root), "commit", "-m", message]).returncode
+
+
+def _extract_matched_task(output: str, prefix: str) -> str:
+    """Parse 'Moved: [Category] full task text' → 'full task text'."""
+    for line in output.splitlines():
+        if line.startswith(prefix):
+            rest = line[len(prefix):].strip()
+            if rest.startswith("["):
+                end = rest.find("]")
+                if end != -1:
+                    return rest[end + 1:].strip()
+            return rest
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Workflow commands
+# ---------------------------------------------------------------------------
+
+def cmd_workflow(command: str, task: str) -> int:
+    root = git_root()
+    src_state, dst_state, prefix = WORKFLOW_TRANSITIONS[command]
+    src = state_file(src_state)
+    dst = state_file(dst_state)
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS_DIR / "task-move"), task],
+        env={**os.environ, "TASK_SRC": str(root / src), "TASK_DST": str(root / dst)},
+        capture_output=True, text=True,
+    )
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        return result.returncode
+
+    matched   = _extract_matched_task(result.stdout, "Moved:")
+    commit_msg = f"{prefix}: {matched or task}"
+    return git_add_and_commit(root, [src, dst], commit_msg)
+
+
+def cmd_done(task: str) -> int:
+    root     = git_root()
+    src      = state_file("now")
+    done_log = state_file("done")
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS_DIR / "task-done"), task],
+        env={**os.environ, "TASK_SRC": str(root / src), "TASK_DONE": str(root / done_log)},
+        capture_output=True, text=True,
+    )
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        return result.returncode
+
+    matched    = _extract_matched_task(result.stdout, "Done:")
+    commit_msg = f"done: {matched or task}"
+    return git_add_and_commit(root, [src, done_log], commit_msg)
+
+
+# ---------------------------------------------------------------------------
+# add command
+# ---------------------------------------------------------------------------
+
+def cmd_add(state_name: str, category_query: str, task_text: str) -> int:
+    """
+    Add a task directly to any state file.
+
+    If state is 'done', appends a timestamped done entry directly.
+    Otherwise, inserts a plain bullet under the matched category heading,
+    creating the category section if it doesn't exist.
+    """
+    root = git_root()
+    cfg  = load_config()
+
+    # resolve state
+    valid_states = list(STATE_DEFAULTS.keys())
+    if state_name not in valid_states:
+        # fuzzy match state name
+        matches = [s for s in valid_states if state_name.lower() in s.lower()]
+        if len(matches) == 1:
+            state_name = matches[0]
+        else:
+            print(f"error: unknown state '{state_name}'. valid states: {', '.join(valid_states)}", file=sys.stderr)
+            return 1
+
+    # resolve category (not needed for done)
+    category = None
+    category_raw = None
+    if state_name != "done":
+        category = fuzzy_match_category(category_query)
+        if not category:
+            cats = [c["name"] for c in get_categories()]
+            q = category_query.strip().lower()
+            matches = [c for c in cats if q in c.lower()]
+            if len(matches) > 1:
+                print(f"error: '{category_query}' matches multiple categories: {', '.join(matches)}", file=sys.stderr)
+                return 1
+            print(f"error: no category matching '{category_query}'", file=sys.stderr)
+            return 1
+
+        # find full category entry for icon
+        for cat in get_categories():
+            if cat["name"] == category:
+                icon = cat.get("icon", "")
+                category_raw = f"{icon} {category}".strip() if icon else category
+                break
+        if not category_raw:
+            category_raw = category
+
+    target_file = root / state_file(state_name)
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # --- done state: append timestamped entry ---
+    if state_name == "done":
+        sys.path.insert(0, str(SCRIPTS_DIR))
+        from tasklib import append_done
+        # category defaults to "Direct" if not resolvable
+        cat_for_done = category_query if category_query else "Direct"
+        matched_cat  = fuzzy_match_category(category_query)
+        append_done(target_file, matched_cat or cat_for_done, task_text)
+        print(f"Added to done: ({matched_cat or cat_for_done}) - {task_text}")
+        done_file = state_file("done")
+        return git_add_and_commit(root, [done_file], f"done: {task_text}")
+
+    # --- all other states: insert bullet under category heading ---
+    lines = target_file.read_text(encoding="utf-8").splitlines() if target_file.exists() else []
+
+    # find existing category section
+    import re as _re
+    CAT_RE   = _re.compile(r'^###\s+(?:[\U0001F300-\U0001FFFE\u2600-\u26FF\u2700-\u27BF]\s*)?(.*\S.*?)\s*$')
+    PHASE_RE = _re.compile(r'^##\s+')
+    DIV_RE   = _re.compile(r'^---\s*$')
+
+    insert_at = None
+    for i, line in enumerate(lines):
+        if PHASE_RE.match(line):
+            continue
+        m = CAT_RE.match(line)
+        if m and m.group(1).strip().lower() == category.lower():
+            # find end of this section (before next --- or next ###)
+            j = i + 1
+            while j < len(lines):
+                if DIV_RE.match(lines[j]) or CAT_RE.match(lines[j]) or PHASE_RE.match(lines[j]):
+                    break
+                j += 1
+            # insert before the divider, after any existing tasks
+            # backtrack past trailing blanks
+            while j > i + 1 and lines[j - 1].strip() == "":
+                j -= 1
+            insert_at = j
+            break
+
+    if insert_at is not None:
+        lines.insert(insert_at, f"* {task_text}")
+    else:
+        # category doesn't exist — append new section
+        if lines and lines[-1].strip() != "":
+            lines.append("")
+        lines.append(f"### {category_raw}")
+        lines.append(f"* {task_text}")
+        lines.append("")
+        lines.append("---")
+
+    target_file.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    print(f"Added to {state_name} [{category}]: {task_text}")
+
+    target = state_file(state_name)
+    return git_add_and_commit(root, [target], f"add ({state_name}): {task_text}")
+
+
+# ---------------------------------------------------------------------------
+# status command
+# ---------------------------------------------------------------------------
+
+def cmd_status() -> int:
+    root = git_root()
+
+    import re as _re
+    CAT_RE  = _re.compile(r'^###\s+(?:[\U0001F300-\U0001FFFE\u2600-\u26FF\u2700-\u27BF]\s*)?(.*\S.*?)\s*$')
+    TASK_RE = _re.compile(r'^\* (.+)')
+
+    def read_tasks(state_name: str) -> Dict[str, List[str]]:
+        path = root / state_file(state_name)
+        if not path.exists():
+            return {}
+        tasks: Dict[str, List[str]] = {}
+        current_cat = None
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if _re.match(r'^##[^#]', line):
+                continue
+            m = CAT_RE.match(line)
+            if m:
+                current_cat = m.group(1).strip()
+                continue
+            t = TASK_RE.match(line)
+            if t and current_cat:
+                tasks.setdefault(current_cat, []).append(t.group(1))
+        return tasks
+
+    now_tasks     = read_tasks("now")
+    blocked_tasks = read_tasks("blocked")
+    paused_tasks  = read_tasks("paused")
+
+    total_now     = sum(len(v) for v in now_tasks.values())
+    total_blocked = sum(len(v) for v in blocked_tasks.values())
+    total_paused  = sum(len(v) for v in paused_tasks.values())
+
+    def fmt_cat(name: str) -> str:
+        icon = get_category_icon(name)
+        return f"{icon} {name}".strip() if icon else name
+
+    def print_section(label: str, state_icon_str: str, tasks: Dict[str, List[str]]) -> None:
+        if not tasks:
+            return
+        print(f"\n  {state_icon_str}  {label}")
+        for cat, items in tasks.items():
+            print(f"     {fmt_cat(cat)}")
+            for item in items:
+                print(f"       · {item}")
+
+    today = date.today().strftime("%a %b %-d")
+    print(f"\n  taskflow status — {today}")
+    print(f"  {state_icon('now')} now: {total_now}   "
+          f"{state_icon('blocked')} blocked: {total_blocked}   "
+          f"{state_icon('paused')} paused: {total_paused}")
+
+    print_section("now", state_icon("now"), now_tasks)
+    print_section("blocked", state_icon("blocked"), blocked_tasks)
+    print_section("paused", state_icon("paused"), paused_tasks)
+    print()
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# week command
+# ---------------------------------------------------------------------------
+
+def cmd_week() -> int:
+    root      = git_root()
+    done_path = root / state_file("done")
+
+    if not done_path.exists():
+        print("\n  no done.md found.\n")
+        return 0
+
+    import re as _re
+    WEEK_RE = _re.compile(r'^##\s+Week of\s+(\d{4}-\d{2}-\d{2})\s*$')
+    DONE_RE = _re.compile(r'^\[[\d\s:\-]+\]\s+done:\s+\(([^)]+)\)\s+-\s+(.+)$')
+
+    lines = done_path.read_text(encoding="utf-8").splitlines()
+
+    # find the last week heading and collect entries after it
+    last_week_idx = None
+    week_date     = None
+    for i, line in enumerate(lines):
+        m = WEEK_RE.match(line)
+        if m:
+            last_week_idx = i
+            week_date     = m.group(1)
+
+    if last_week_idx is None:
+        print("\n  no week headings found in done.md yet.\n")
+        return 0
+
+    entries: Dict[str, List[str]] = {}
+    for line in lines[last_week_idx + 1:]:
+        d = DONE_RE.match(line)
+        if d:
+            cat, task = d.group(1).strip(), d.group(2).strip()
+            entries.setdefault(cat, []).append(task)
+
+    if not entries:
+        print("\n  nothing completed this week yet.\n")
+        return 0
+
+    total = sum(len(v) for v in entries.values())
+
+    def fmt_cat(name: str) -> str:
+        icon = get_category_icon(name)
+        return f"{icon} {name}".strip() if icon else name
+
+    print(f"\n  {state_icon('done')}  week of {week_date} — {total} completed\n")
+    for cat, tasks in entries.items():
+        print(f"  {fmt_cat(cat)}")
+        for t in tasks:
+            print(f"    · {t}")
+    print()
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Reporting commands (delegate to reports.py)
+# ---------------------------------------------------------------------------
+
+def _load_config_categories() -> List[str]:
+    return [c["name"] for c in get_categories()]
+
+
+def cmd_progress(as_json: bool = False) -> int:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    from reports import report_progress
+    root  = git_root()
+    cats  = _load_config_categories()
+    icons = {c["name"]: c.get("icon", "") for c in get_categories()}
+    states_cfg = {k: get_state(k) for k in STATE_DEFAULTS}
+    print(report_progress(root, config_categories=cats or None,
+                          as_json=as_json, state_icons=icons, states=states_cfg))
+    return 0
+
+
+def cmd_pipeline(as_json: bool = False) -> int:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    from reports import report_pipeline
+    root  = git_root()
+    cats  = _load_config_categories()
+    icons = {c["name"]: c.get("icon", "") for c in get_categories()}
+    states_cfg = {k: get_state(k) for k in STATE_DEFAULTS}
+    print(report_pipeline(root, config_categories=cats or None,
+                          as_json=as_json, state_icons=icons, states=states_cfg))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Setup command
+# ---------------------------------------------------------------------------
+
+def cmd_setup(force: bool = False, dry_run: bool = False) -> int:
+    try:
+        import yaml
+    except ImportError:
+        print("error: PyYAML is required.  Run: pip install pyyaml", file=sys.stderr)
+        return 1
+
+    if not CONFIG_PATH.exists():
+        print(f"error: {CONFIG_PATH.name} not found.", file=sys.stderr)
+        return 1
+
+    with CONFIG_PATH.open(encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    errors = _validate_config(cfg)
+    if errors:
+        print("configuration errors in .taskflow.yml:", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        return 1
+
+    categories = cfg.get("categories", [])
+    phases     = cfg.get("phases", [])
+    settings   = cfg.get("settings", {})
+    repo_name  = settings.get("repo_name", "taskflow")
+
+    print(f"\ntaskflow setup — {repo_name}")
+    print(f"  {len(categories)} categories, {len(phases)} phases\n")
+
+    changed = []
+    skipped = []
+
+    SIMPLE_STATES = ["now", "blocked", "paused", "next"]
+    SIMPLE_TITLES = {
+        "now":     ("Now",     "Tasks actively being executed this week."),
+        "blocked": ("Blocked", "Tasks waiting on something external.\n\nEach entry should have a note explaining what it's blocked on."),
+        "paused":  ("Paused",  "Tasks deliberately on hold.\n\nNot blocked, not forgotten — just not now."),
+        "next":    ("Next",    "Planned work queued for the next execution window."),
+    }
+
+    for state_name in SIMPLE_STATES:
+        s     = get_state(state_name)
+        path  = REPO_ROOT / s["file"]
+        title, description = SIMPLE_TITLES[state_name]
+        content = _build_simple_file(title, description, categories)
+        if not dry_run:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and not force:
+            skipped.append(s["file"])
+        else:
+            if not dry_run:
+                path.write_text(content, encoding="utf-8")
+            changed.append(s["file"])
+
+    later_s    = get_state("later")
+    later_path = REPO_ROOT / later_s["file"]
+    later_content = _build_later_file(categories, phases)
+    if not dry_run:
+        later_path.parent.mkdir(parents=True, exist_ok=True)
+    if later_path.exists() and not force:
+        skipped.append(later_s["file"])
+    else:
+        if not dry_run:
+            later_path.write_text(later_content, encoding="utf-8")
+        changed.append(later_s["file"])
+
+    done_s    = get_state("done")
+    done_path = REPO_ROOT / done_s["file"]
+    if not dry_run:
+        done_path.parent.mkdir(parents=True, exist_ok=True)
+    if not done_path.exists():
+        if not dry_run:
+            done_path.write_text(
+                "# Done\n\nCompleted tasks, appended by `taskflow done`.\n\n---\n",
+                encoding="utf-8",
+            )
+        changed.append(done_s["file"])
+
+    weekly_dir = REPO_ROOT / settings.get("weekly_plan_dir", "changelog/weekly")
+    if not weekly_dir.exists():
+        if not dry_run:
+            weekly_dir.mkdir(parents=True, exist_ok=True)
+            (weekly_dir / ".gitkeep").touch()
+        changed.append(str(weekly_dir.relative_to(REPO_ROOT)) + "/")
+
+    week_plan_path = SCRIPTS_DIR / "week-plan"
+    if _patch_week_plan(week_plan_path, categories, dry_run):
+        changed.append("scripts/git/week-plan")
+        print("  updated  scripts/git/week-plan (category config)")
+
+    _install_git_aliases(dry_run)
+
+    if changed:
+        print("  created/updated:")
+        for f in changed:
+            print(f"    + {f}")
+    if skipped:
+        print("  skipped (already exist — use --force to overwrite):")
+        for f in skipped:
+            print(f"    ~ {f}")
+
+    print(f"\n  Done. Edit .taskflow.yml and re-run `taskflow setup` to regenerate.\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Setup internals
+# ---------------------------------------------------------------------------
+
+def _validate_config(cfg: dict) -> list:
+    errors = []
+    for i, cat in enumerate(cfg.get("categories", [])):
+        if not cat.get("name"):
+            errors.append(f"categories[{i}] is missing 'name'")
+    cat_names = {c["name"] for c in cfg.get("categories", [])}
+    for i, phase in enumerate(cfg.get("phases", [])):
+        if not phase.get("name"):
+            errors.append(f"phases[{i}] is missing 'name'")
+        for c in phase.get("categories", []):
+            if c not in cat_names:
+                errors.append(f"phases[{i}] references unknown category '{c}'")
+    return errors
+
+
+def _category_heading(cat: dict) -> str:
+    icon = cat.get("icon", "")
+    name = cat["name"]
+    return f"### {icon} {name}".strip() if icon else f"### {name}"
+
+
+def _build_simple_file(title: str, description: str, categories: list) -> str:
+    lines = [f"# {title}", "", description.strip(), ""]
+    for cat in categories:
+        lines.append("---")
+        lines.append("")
+        lines.append(_category_heading(cat))
+        lines.append("")
+    lines.append("---")
+    return "\n".join(lines) + "\n"
+
+
+def _build_later_file(categories: list, phases: list) -> str:
+    cat_by_name = {c["name"]: c for c in categories}
+    lines = [
+        "# Later", "",
+        "Longer-horizon work organised by phase.", "",
+        "Promote to next when the time is right:", "",
+        "```", 'taskflow promote "task text"', "```", "",
+    ]
+    for phase in phases:
+        lines += ["---", "", f"## {phase['name']}"]
+        if phase.get("description"):
+            lines += ["", f"> {phase['description']}"]
+        lines.append("")
+        phase_cat_names = phase.get("categories") or [c["name"] for c in categories]
+        for cat_name in phase_cat_names:
+            cat = cat_by_name.get(cat_name)
+            if cat:
+                lines += [_category_heading(cat), ""]
+    lines.append("---")
+    return "\n".join(lines) + "\n"
+
+
+WEEK_PLAN_BLOCK_START = "# === TASKFLOW GENERATED — do not edit below this line ==="
+WEEK_PLAN_BLOCK_END   = "# === END TASKFLOW GENERATED ==="
+
+
+def _build_week_plan_block(categories: list) -> str:
+    lines = ["CATEGORY_ALIASES = {"]
+    for cat in categories:
+        name = cat["name"]
+        for alias in cat.get("aliases", []):
+            lines.append(f"    {alias!r}: {name!r},")
+        lines.append(f"    {name!r}: {name!r},")
+    lines.append("}")
+    order = "DEFAULT_CATEGORY_ORDER = [\n" + "".join(f"    {c['name']!r},\n" for c in categories) + "]"
+    return f"{WEEK_PLAN_BLOCK_START}\n" + "\n".join(lines) + f"\n\n{order}\n{WEEK_PLAN_BLOCK_END}\n"
+
+
+def _patch_week_plan(path: Path, categories: list, dry_run: bool) -> bool:
+    if not path.exists():
+        return False
+    content = path.read_text(encoding="utf-8")
+    new_block = _build_week_plan_block(categories)
+    if WEEK_PLAN_BLOCK_START in content:
+        import re as _re
+        pattern = _re.compile(
+            re.escape(WEEK_PLAN_BLOCK_START) + r".*?" + re.escape(WEEK_PLAN_BLOCK_END) + r"\n?",
+            _re.DOTALL,
+        )
+        new_content = pattern.sub(new_block, content)
+    else:
+        new_content = content.rstrip() + "\n\n" + new_block
+    if new_content == content:
+        return False
+    if not dry_run:
+        path.write_text(new_content, encoding="utf-8")
+    return True
+
+
+def _install_git_aliases(dry_run: bool) -> None:
+    aliases_path = REPO_ROOT / "scripts" / "git-aliases.sh"
+    if not aliases_path.exists():
+        return
+    if dry_run:
+        print("  [dry-run] would run: scripts/git-aliases.sh")
+        return
+    result = subprocess.run([str(aliases_path)], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  warning: git-aliases.sh exited {result.returncode}", file=sys.stderr)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Argument parser
+# ---------------------------------------------------------------------------
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="taskflow",
+        description="Git-native task management.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+commands:
+  setup                    generate backlog files and install git aliases
+  promote <task>           later   → next
+  start   <task>           next    → now
+  block   <task>           now     → blocked
+  unblock <task>           blocked → now
+  pause   <task>           now     → paused
+  unpause <task>           paused  → now
+  backlog <task>           now     → next
+  done    <task>           now     → done + commit
+  add <state> <cat> <task> add task directly to any state
+  status                   active tasks, blockers, holds
+  week                     this week's completions
+  pipeline [--json]        work in flight across all states
+  progress [--json]        now vs. done counts by week
+
+task matching is fuzzy — you only need enough text to be unique.
+git aliases call this script directly; both paths are equivalent.
+        """,
+    )
+    sub = parser.add_subparsers(dest="command", metavar="command")
+
+    p_setup = sub.add_parser("setup")
+    p_setup.add_argument("--force",   action="store_true")
+    p_setup.add_argument("--dry-run", action="store_true")
+
+    for cmd in list(WORKFLOW_TRANSITIONS.keys()) + ["done"]:
+        p = sub.add_parser(cmd)
+        p.add_argument("task", nargs="+")
+
+    p_add = sub.add_parser("add")
+    p_add.add_argument("state",    help="target state (now, next, later, blocked, paused, done)")
+    p_add.add_argument("category", help="category name (fuzzy matched)")
+    p_add.add_argument("task",     nargs="+", help="task text")
+
+    sub.add_parser("status")
+    sub.add_parser("week")
+
+    p_progress = sub.add_parser("progress")
+    p_progress.add_argument("--json", action="store_true", dest="as_json")
+
+    p_pipeline = sub.add_parser("pipeline")
+    p_pipeline.add_argument("--json", action="store_true", dest="as_json")
+
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args   = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 0
+
+    if args.command == "setup":
+        return cmd_setup(force=args.force, dry_run=args.dry_run)
+
+    if args.command == "status":
+        return cmd_status()
+
+    if args.command == "week":
+        return cmd_week()
+
+    if args.command == "progress":
+        return cmd_progress(as_json=args.as_json)
+
+    if args.command == "pipeline":
+        return cmd_pipeline(as_json=args.as_json)
+
+    if args.command == "add":
+        return cmd_add(args.state, args.category, " ".join(args.task))
+
+    task = " ".join(args.task)
+
+    if args.command == "done":
+        return cmd_done(task)
+
+    if args.command in WORKFLOW_TRANSITIONS:
+        return cmd_workflow(args.command, task)
+
+    parser.print_help()
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
