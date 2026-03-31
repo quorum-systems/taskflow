@@ -2,7 +2,7 @@
 
 Git-native task management for people who are already in the terminal.
 
-No database. No SaaS. No browser tab to context-switch into. Markdown files, a handful of Python scripts, and git aliases that turn your commit history into an execution log.
+No database. No SaaS. No browser tab to context-switch into. Markdown files, a handful of Python scripts, and git commits that turn your task history into an execution log.
 
 ---
 
@@ -10,7 +10,7 @@ No database. No SaaS. No browser tab to context-switch into. Markdown files, a h
 
 Issue trackers are built for visibility into other people's work. When you're the one doing the work, they're mostly overhead — fields to fill in, statuses to update, ceremonies that exist to prove progress rather than make it.
 
-I already knew this. My workaround was a graph paper notebook: hand-drawn checkboxes, running to-do lists, something I could capture a task in without clicking through three screens. It worked until it didn't — no state tracking, no history, no way to tell what was actually in progress versus just written down and forgotten.
+My workaround was a graph paper notebook: hand-drawn checkboxes, running to-do lists, something I could capture a task in without clicking through three screens. It worked until it didn't — no state tracking, no history, no way to tell what was actually in progress versus just written down and forgotten.
 
 taskflow is what I built instead. It took about 20 minutes to get the first version working. I've been using it on a real infrastructure build since, and it's earned everything I've added to it.
 
@@ -21,7 +21,7 @@ taskflow is what I built instead. It took about 20 minutes to get the first vers
 Every task lives in one of six files:
 
 ```
-backlog/
+.taskflow/backlog/
   0-now.md       ▶  executing this week
   1-blocked.md   ⊘  waiting on something external
   2-paused.md    ⏸  deliberately on hold — not blocked, not forgotten
@@ -38,19 +38,38 @@ File paths are configurable. If you want your backlog somewhere else, set it in 
 
 ## Getting started
 
-**1. Clone and install the one dependency**
+### 1. Install
 
 ```bash
-git clone https://github.com/quorum-systems/taskflow.git myproject
-cd myproject
-pip install pyyaml
+pip install taskflow
 ```
 
-pyyaml is only needed for `taskflow setup`. The task scripts are pure stdlib — once setup has run, you can uninstall it.
+Or to install from source:
 
-**2. Edit `.taskflow.yml`**
+```bash
+git clone https://github.com/quorum-systems/taskflow.git
+cd taskflow
+pip install -e .
+```
 
-Define your categories and phases. That's the only configuration you need to touch. Everything else has sensible defaults.
+### 2. Initialize a project
+
+```bash
+cd myproject
+taskflow init
+```
+
+This creates `.taskflow.yml` with starter configuration, sets up the backlog directory structure, and installs git aliases. If the directory isn't a git repo yet, taskflow will offer to initialize one.
+
+To bootstrap from an existing taskflow configuration:
+
+```bash
+taskflow init --from https://github.com/yourorg/taskflow-config.git
+```
+
+### 3. Edit `.taskflow.yml`
+
+Define your categories and phases. That's the only configuration you need to touch before you start.
 
 ```yaml
 categories:
@@ -70,13 +89,13 @@ phases:
     description: "Performance, reliability, and growth."
 ```
 
-**3. Run setup**
+### 4. Run setup
 
 ```bash
-./taskflow setup
+taskflow setup
 ```
 
-Generates your backlog file skeletons, installs the git aliases, and configures the weekly plan script. Re-run whenever you change `.taskflow.yml`.
+Generates your backlog file skeletons and installs the git aliases. Re-run whenever you change `.taskflow.yml`. Existing task content is never overwritten unless you pass `--force`.
 
 ---
 
@@ -131,6 +150,14 @@ taskflow add done Engineering "emergency patch deployed"   # no prior 'now' need
 ```
 
 Category matching is fuzzy and case-insensitive — `taskflow add next dev "..."` finds `DevOps`.
+
+### List tasks
+
+```bash
+taskflow list          # defaults to now
+taskflow list next
+taskflow list blocked
+```
 
 ### Fuzzy matching
 
@@ -250,7 +277,130 @@ Plain bullets under a category heading. No checkboxes.
 ---
 ```
 
-Subtasks indent two spaces and move with their parent.
+Subtasks indent two spaces and move with their parent. Nesting can go deeper — any level of indentation is preserved.
+
+---
+
+## How to structure your tasks
+
+Each file has a different job. The structure you put in them should match.
+
+### now — what you're actually doing this week
+
+Keep it short. If it doesn't fit in a single focused session or sprint, it probably isn't `now` yet. A good `now` file has 3–7 tasks, not 20.
+
+**Write tasks as concrete actions, not topics:**
+
+```markdown
+### 🔵 Backend
+* add input validation to /api/users POST handler
+* fix null pointer crash when auth token is missing
+```
+
+Not `"auth work"` or `"backend stuff"`. The task text becomes the commit message — it should read like a record of what happened.
+
+**Use subtasks to capture known steps without splitting into separate tasks:**
+
+```markdown
+* deploy staging environment
+  * provision EC2 instance
+  * run Ansible playbook
+  * verify health checks pass
+```
+
+The parent task stays in `now` until you're ready to call the whole thing done. Subtasks give you a checklist without polluting the top-level list.
+
+---
+
+### next — queued, not started
+
+`next` is your input buffer. Tasks here are defined, prioritized, and ready to start — just not this window.
+
+**Write tasks clearly enough that future-you knows what to do:**
+
+```markdown
+### 🔴 DevOps
+* write Terraform module for RDS provisioning
+* add CloudWatch alarm for CPU > 85%
+```
+
+**Don't write tasks that are still vague:**
+
+```markdown
+### 🔴 DevOps
+* do something about monitoring         ← too vague
+* think about database scaling          ← not an action
+```
+
+If you're not sure what the task actually is, put it in `later` and figure it out when it becomes relevant. `next` should contain executable work.
+
+**Order matters within categories.** Tasks that come first in the file get started first. If you manually reorder lines in `next`, that's your priority signal.
+
+---
+
+### paused — on hold by choice
+
+`paused` means you chose to set it aside — not because something is blocking you, but because priorities shifted. The task is still valid. It'll come back.
+
+**Add a note to yourself when you pause a task** by editing the file directly after the move:
+
+```markdown
+### 🔵 Backend
+* refactor auth middleware to support OAuth2
+  * paused: deprioritized for MVP — revisit in Phase 2
+```
+
+This isn't enforced — it's just good practice. When something has been paused for two weeks and you've forgotten why, you'll want that note.
+
+**Don't let paused grow into a junk drawer.** If something's been paused long enough that you genuinely don't know if you'll ever do it, move it back to `later` or delete it. `paused` is for work you intend to resume.
+
+---
+
+### blocked — waiting on something external
+
+`blocked` means you can't make progress right now because something outside your control hasn't happened yet.
+
+**Always note what's blocking the task.** Edit the file after moving it:
+
+```markdown
+### 🔴 DevOps
+* configure production VPN
+  * blocked: waiting on network team to provision the ASA firewall rules (ticket: NET-441)
+```
+
+This note is what makes `blocked` useful. Without it, you have a list of things you can't do and no idea what would unblock them.
+
+**Check blocked regularly.** Blockers resolve and tasks sit there forgotten. During your weekly review, look at each blocked item and ask whether the blocker is still real.
+
+---
+
+### later — everything else
+
+`later` is where work lives until it's ready to become `next`. It's organized by phase, which lets you plan across time horizons without mixing near-term and long-term work.
+
+**Use phases to separate planning horizons:**
+
+```markdown
+## Phase 1 — MVP
+
+### 🔵 Backend
+* implement basic authentication
+* add rate limiting to public endpoints
+
+---
+
+## Phase 2 — Scale
+
+### 🔵 Backend
+* migrate auth to OAuth2
+* implement distributed session store
+```
+
+**Write tasks at whatever level of fidelity you have.** A task in Phase 2 might be a rough idea — that's fine. It'll sharpen when it becomes `next`.
+
+**Use `later` as a capture zone.** When you think of something while doing something else, `taskflow add later Category "idea"` gets it out of your head and into the backlog without breaking your flow. You can sort and refine later.
+
+**Phases have no mechanical effect.** Tasks can go under any phase regardless of configuration. The phase structure is for your benefit — it's a planning aid, not enforcement.
 
 ---
 
@@ -300,33 +450,45 @@ No enforcement. Any task can go under any phase. The filter just controls which 
 
 ### States
 
-By default taskflow uses the standard file layout. You can override any state's file path and icon:
+By default taskflow uses the standard file layout under `.taskflow/backlog/`. You can override any state's file path and icon:
 
 ```yaml
 states:
   now:
-    file: "backlog/0-now.md"
+    file: ".taskflow/backlog/0-now.md"
     icon: "▶"
   blocked:
-    file: "backlog/1-blocked.md"
+    file: ".taskflow/backlog/1-blocked.md"
     icon: "⊘"
   paused:
-    file: "backlog/2-paused.md"
+    file: ".taskflow/backlog/2-paused.md"
     icon: "⏸"
   next:
-    file: "backlog/3-next.md"
+    file: ".taskflow/backlog/3-next.md"
     icon: "◈"
   later:
-    file: "backlog/4-later.md"
+    file: ".taskflow/backlog/4-later.md"
     icon: "◇"
   done:
-    file: "backlog/done.md"
+    file: ".taskflow/backlog/done.md"
     icon: "✓"
 ```
 
 The entire `states` section is optional. Leave it out and the defaults above apply. Override only what you want to change — partial overrides work fine.
 
 `taskflow setup` creates all state file paths recursively, so you can put them anywhere.
+
+### Settings
+
+```yaml
+settings:
+  repo_name: "myproject"
+  done_weeks: 4                             # weeks to retain in done.md before archiving
+  weekly_plan_dir: ".taskflow/changelog/weekly"
+  archive_path: ".taskflow/backlog/archive"
+```
+
+`done_weeks` controls how many completed weeks stay visible in `done.md`. Older weeks are automatically moved to monthly archive files in `archive/` after every `taskflow done`.
 
 ---
 
@@ -346,13 +508,41 @@ Diff from the start of the week to the end and you have a concrete record of wha
 
 ---
 
-## Weekly plan
-
-Generate a full snapshot of active work, grouped by category:
+## Shell completion
 
 ```bash
-scripts/git/week-plan               # writes changelog/weekly/YYYY-MM-DD.md
-scripts/git/week-plan --stdout      # prints to terminal
+taskflow completion bash >> ~/.bashrc
+taskflow completion zsh  >> ~/.zshrc
+taskflow completion fish >> ~/.config/fish/completions/taskflow.fish
+```
+
+---
+
+## Repo structure
+
+```
+.taskflow.yml             the only file you need to edit
+pyproject.toml            package metadata
+
+src/taskflow/
+  cli.py                  CLI commands and git integration
+  tasklib.py              shared parsing and mutation library
+  config.py               config loading and path resolution
+  setup_cmd.py            init and setup logic
+  reports.py              pipeline and progress report logic
+  archive.py              done.md week archiving
+
+.taskflow/                generated by taskflow setup
+  backlog/
+    0-now.md
+    1-blocked.md
+    2-paused.md
+    3-next.md
+    4-later.md
+    done.md
+    archive/              older completed weeks
+  changelog/
+    weekly/               weekly plan snapshots
 ```
 
 ---
@@ -369,36 +559,6 @@ taskflow does not have:
 - A project manager to manage your project manager
 
 If you **need** those things, there are good tools that provide them. This is explicitly not trying to be those tools. The design point is minimum viable friction for a solo practitioner or small team that lives in the terminal and wants their task state in the same place as their code.
-
----
-
-## Repo structure
-
-```
-.taskflow.yml             the only file you need to edit
-taskflow                  CLI — setup, workflow, reporting
-requirements.txt          pyyaml (setup only — not needed at runtime)
-
-scripts/
-  git-aliases.sh          installs git aliases (run by taskflow setup)
-  git/
-    tasklib.py            shared parsing and mutation library
-    task-move             moves a task between backlog files
-    task-done             marks a task complete, appends to done.md
-    week-plan             generates weekly execution plan markdown
-    reports.py            pipeline and progress report logic
-
-backlog/                  generated by taskflow setup, filled in by you
-  0-now.md
-  1-blocked.md
-  2-paused.md
-  3-next.md
-  4-later.md
-  done.md
-
-changelog/
-  weekly/                 weekly plan output
-```
 
 ---
 
