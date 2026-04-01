@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 
 import pytest
 from click.testing import CliRunner
 
 from taskflow.cli import main
 
+SEMVER_REGEX = r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?"
 
 @pytest.fixture
 def runner() -> CliRunner:
@@ -42,8 +44,7 @@ class TestVersion:
     def test_version_flag(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.3.0" in result.output
-
+        assert re.search(SEMVER_REGEX, result.output.strip(), re.VERBOSE)
 
 class TestInit:
     def test_creates_config(self, runner: CliRunner, tmp_git_repo: Path) -> None:
