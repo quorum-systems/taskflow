@@ -171,7 +171,7 @@ def find_task(sections: list[dict], query: str, src_path: Path) -> tuple[dict, i
                 matches.append((section, line_idx, txt, raw_line))
 
     if not matches:
-        raise click.UsageError(f"No task matching '{query}' in {src_path.name}\n" f"  Run `taskflow list` to see what's there.")
+        raise click.UsageError(f"No task matching '{query}' in {src_path.name}\n  Run `taskflow list` to see what's there.")
 
     if len(matches) > 1:
         lines = "\n".join(f"  line {idx + 1}  [{sec['heading']}]  {txt}" for sec, idx, txt, _ in matches)
