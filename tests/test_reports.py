@@ -13,7 +13,9 @@ from pathlib import Path
 import pytest
 
 from taskflow.config import TaskflowConfig
-from taskflow.reports import count_tasks_by_category, ordered_categories, parse_done_by_week, report_pipeline, report_progress
+from taskflow.reports import (count_tasks_by_category, ordered_categories,
+                              parse_done_by_week, report_pipeline,
+                              report_progress)
 
 SAMPLE_NOW = """\
 ### 🔵 Engineering
