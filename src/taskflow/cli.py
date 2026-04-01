@@ -286,8 +286,7 @@ def add(state: str, category: str, task: tuple) -> None:
 
     Category is fuzzy-matched. State 'done' writes a timestamped entry directly.
     """
-    from taskflow.tasklib import (CATEGORY_RE, DIVIDER_RE, PHASE_RE,
-                                  collapse_blank_lines)
+    from taskflow.tasklib import CATEGORY_RE, DIVIDER_RE, PHASE_RE, collapse_blank_lines
 
     query = " ".join(task)
     cfg = load_config()

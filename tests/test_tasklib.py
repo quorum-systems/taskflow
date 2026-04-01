@@ -12,10 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from taskflow.tasklib import (append_done, complete_task, find_task,
-                              find_task_block, move_task, normalize,
-                              parse_sections, serialize_lines, strip_emoji,
-                              task_text)
+from taskflow.tasklib import append_done, complete_task, find_task, find_task_block, move_task, normalize, parse_sections, serialize_lines, strip_emoji, task_text
 
 
 class TestNormalize:

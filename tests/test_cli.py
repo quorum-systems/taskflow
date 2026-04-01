@@ -17,7 +17,23 @@ from click.testing import CliRunner
 
 from taskflow.cli import main
 
-SEMVER_REGEX = r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?"
+SEMVER_REGEX = r"""
+(?<!\d)                        # no digit before (avoid partial matches)
+(0|[1-9]\d*)                  # major
+\.
+(0|[1-9]\d*)                  # minor
+\.
+(0|[1-9]\d*)                  # patch
+(?:                           # optional prerelease
+    -
+    (?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)
+)?
+(?:                           # optional build metadata
+    \+
+    (?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)
+)?
+(?!\d)                        # no digit after
+"""
 
 
 @pytest.fixture
