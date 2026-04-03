@@ -12,3 +12,4 @@ Completed tasks, appended by `taskflow done`.
 [2026-03-31 22:38:00] done: (Product) - fix readme file so its actually useful
 [2026-04-01 17:35:32] done: (Engineering) - fix build and push valid tag and package to pypi
 [2026-04-03 21:59:58] done: (Engineering) - this is a duplicate test
+[2026-04-03 22:00:07] done: (Engineering) - Fix duplicate task on add problem
