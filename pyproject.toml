@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "taskflow-git"
-version = "0.3.9"
+version = "0.3.11"
 description = "Git-native task management for people who live in the terminal."
 readme = "README.md"
 requires-python = ">=3.9"

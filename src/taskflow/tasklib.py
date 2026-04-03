@@ -371,6 +371,40 @@ def append_done(done_path: Path, category: str, task_text_str: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Cross-file duplicate check
+# ---------------------------------------------------------------------------
+
+# States checked on `taskflow add` — done is intentionally excluded.
+_ACTIVE_STATES = ("now", "blocked", "paused", "next")
+
+
+def check_for_duplicate(
+    query: str,
+    state_paths: dict[str, Path],
+) -> None:
+    """
+    Raise click.UsageError if query fuzzy-matches a task already present
+    in any active backlog file (now, blocked, paused, next).
+
+    state_paths: mapping of state name → Path (pass cfg.state_path per state).
+    Skips files that don't exist yet.
+    """
+    import click
+
+    norm_query = normalize(query)
+
+    for state, path in state_paths.items():
+        if not path.exists():
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+        sections = parse_sections(lines)
+        for section in sections:
+            for line_idx, txt, _raw in section["tasks"]:
+                if norm_query in normalize(txt):
+                    raise click.UsageError(f"Task already exists in {path.name}, line {line_idx + 1} [{section['heading']}]:\n  {txt}")
+
+
+# ---------------------------------------------------------------------------
 # Task move
 # ---------------------------------------------------------------------------
 
