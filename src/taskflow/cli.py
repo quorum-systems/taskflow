@@ -19,7 +19,7 @@ from taskflow.archive import archive_old_weeks
 from taskflow.config import WORKFLOW_TRANSITIONS, TaskflowConfig, load_config
 from taskflow.reports import report_pipeline, report_progress
 from taskflow.setup_cmd import STARTER_CONFIG, run_setup
-from taskflow.tasklib import append_done, complete_task, move_task
+from taskflow.tasklib import _ACTIVE_STATES, CATEGORY_RE, DIVIDER_RE, PHASE_RE, append_done, check_for_duplicate, collapse_blank_lines, complete_task, move_task
 
 # ---------------------------------------------------------------------------
 # Shell completion
@@ -286,7 +286,6 @@ def add(state: str, category: str, task: tuple) -> None:
 
     Category is fuzzy-matched. State 'done' writes a timestamped entry directly.
     """
-    from taskflow.tasklib import CATEGORY_RE, DIVIDER_RE, PHASE_RE, collapse_blank_lines
 
     query = " ".join(task)
     cfg = load_config()
@@ -326,6 +325,9 @@ def add(state: str, category: str, task: tuple) -> None:
     # find the icon for the category heading
     icon = cfg.category_icon(cat_name)
     cat_raw = f"{icon} {cat_name}".strip() if icon else cat_name
+
+    # reject if the task already exists in any active backlog file
+    check_for_duplicate(query, {s: cfg.state_path(s) for s in _ACTIVE_STATES})
 
     target = cfg.state_path(state)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -386,7 +388,7 @@ def list_tasks(state: str) -> None:
     taskflow list blocked   # what's stuck
     """
 
-    from taskflow.tasklib import CATEGORY_RE, PHASE_RE, TASK_RE
+    from taskflow.tasklib import TASK_RE
 
     cfg = load_config()
     path = cfg.state_path(state)
@@ -438,7 +440,7 @@ def status() -> None:
     """Active tasks, blockers, and holds — the morning view."""
     import re as _re
 
-    from taskflow.tasklib import CATEGORY_RE, TASK_RE
+    from taskflow.tasklib import TASK_RE
 
     cfg = load_config()
 
